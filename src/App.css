@@ -1,4 +1,6 @@
 .app-shell {
+  position: relative;
+  overflow: hidden;
   min-height: 100svh;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -6,38 +8,60 @@
   background: #e9e1ce;
 }
 
+.abstract-background {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  width: 100vw;
+  height: 100svh;
+  pointer-events: none;
+}
+
+.app-shell::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      circle at 50% 42%,
+      rgba(255, 253, 246, 0.18) 0,
+      rgba(233, 225, 206, 0.02) 58%,
+      rgba(51, 41, 27, 0.05) 100%
+    );
+}
+
 .topbar {
   position: relative;
   z-index: 2;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 24px;
-  padding: 28px clamp(20px, 5vw, 72px) 0;
+  padding: 28px clamp(20px, 5vw, 72px) 0 0;
 }
 
-.eyebrow {
-  margin: 0 0 4px;
-  color: #7a684c;
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
-.topbar h1 {
+.brand-logo {
+  position: absolute;
+  left: 0;
+  top: 28px;
   margin: 0;
-  color: #33291b;
-  font-size: clamp(30px, 5vw, 58px);
-  line-height: 0.98;
-  font-weight: 850;
-  letter-spacing: 0;
+  line-height: 0;
+  pointer-events: none;
+}
+
+.brand-logo img {
+  display: block;
+  width: auto;
+  height: auto;
 }
 
 .status-pill {
   flex: 0 0 auto;
   border: 1px solid rgba(203, 190, 158, 0.9);
   border-radius: 999px;
+  min-width: 82px;
   padding: 10px 14px;
   color: #5f5039;
   background: rgba(255, 253, 246, 0.68);
@@ -48,22 +72,39 @@
   backdrop-filter: blur(14px);
 }
 
+.fps-counter {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 7px;
+  font-variant-numeric: tabular-nums;
+}
+
+.fps-value {
+  min-width: 2ch;
+  color: #33291b;
+  text-align: right;
+}
+
 .stage {
-  position: relative;
+  position: fixed;
+  inset: 0;
   z-index: 1;
   min-height: 0;
-  padding: 0 clamp(8px, 3vw, 36px) 28px;
+  padding: 0;
 }
 
 .desk-frame {
   position: relative;
+  width: 100%;
+  height: 100%;
   min-height: 0;
 }
 
 .desk-canvas {
   width: 100%;
-  height: min(760px, calc(100svh - 112px));
-  min-height: 520px;
+  height: 100svh;
+  min-height: 0;
   touch-action: none;
   user-select: none;
   cursor: default;
@@ -79,14 +120,19 @@
   cursor: grab;
 }
 
-.desk-canvas.is-dragging {
+.desk-canvas.is-pan-enabled {
+  cursor: grab;
+}
+
+.desk-canvas.is-dragging,
+.desk-canvas.is-panning {
   cursor: grabbing;
 }
 
 .zoom-controls {
   position: absolute;
   right: clamp(16px, 3vw, 42px);
-  top: clamp(14px, 2vw, 24px);
+  top: clamp(84px, 10svh, 108px);
   display: grid;
   grid-template-columns: 34px minmax(112px, 168px) 34px 54px;
   align-items: center;
@@ -152,8 +198,8 @@
   }
 
   .desk-canvas {
-    height: calc(100svh - 154px);
-    min-height: 460px;
+    height: 100svh;
+    min-height: 0;
   }
 
   .zoom-controls {

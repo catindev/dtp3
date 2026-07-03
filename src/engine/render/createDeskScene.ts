@@ -1,5 +1,5 @@
 import { Application, Container, Graphics } from 'pixi.js'
-import type { Text, Ticker } from 'pixi.js'
+import type { Text } from 'pixi.js'
 import {
   animateBoardGrowth,
   clearBoardGrowth,
@@ -27,7 +27,15 @@ import {
   type SlotCollapseEffect,
 } from '../animation/slotMotion'
 import { hitCard, validAdjacentDropColumn } from '../interaction/hitTest'
-import { createLayout, getSlotPose, type SceneLayout } from '../layout/boardLayout'
+import {
+  canPanLayout,
+  clampCameraOffsetToLayout,
+  createLayout,
+  fitCameraOffsetToWorkspace,
+  getSlotPose,
+  getWorkspaceZoomLimit,
+  type SceneLayout,
+} from '../layout/boardLayout'
 import type { Vec2 } from '../layout/projection'
 import { COLUMN_IDS, type CardId, type ColumnId, type ColumnRowCounts, type SlotId } from '../model/boardTypes'
 import { ZOOM } from '../model/gameConstants'
@@ -39,7 +47,7 @@ import { formatCardTitle } from './cardTypography'
 import { createCardView, drawCard, type CardView } from './cardView'
 
 export type DeskSceneController = {
-  setZoom: (nextZoom: number, focus?: Vec2) => void
+  setZoom: (nextZoom: number) => void
   destroy: () => void
 }
 
@@ -47,12 +55,21 @@ type DeskSceneOptions = {
   host: HTMLDivElement
   initialZoom?: number
   onZoomChange?: (zoom: number) => void
+  onZoomMaxChange?: (zoomMax: number) => void
+}
+
+type CameraPan = {
+  pointerId: number
+  startOffset: Vec2
+  startPoint: Vec2
 }
 
 const getHostSize = (host: HTMLDivElement, fallback?: SceneLayout) => ({
   width: host.clientWidth || fallback?.width || 960,
   height: host.clientHeight || fallback?.height || 640,
 })
+
+const PIXI_RESOLUTION_LIMIT = 1.5
 
 const loadSceneFonts = async () => {
   if (!document.fonts) {
@@ -66,10 +83,32 @@ const loadSceneFonts = async () => {
   ])
 }
 
-export const createDeskScene = ({ host, initialZoom = 1, onZoomChange }: DeskSceneOptions): DeskSceneController => {
+const quantize = (value: number) => Math.round(value * 100)
+
+const getCardRenderKey = (card: CardView) =>
+  [
+    card.phase,
+    quantize(card.x),
+    quantize(card.y),
+    quantize(card.restX),
+    quantize(card.restY),
+    quantize(card.rotation),
+    quantize(card.motion.lift),
+    quantize(card.motion.fly),
+    quantize(card.motion.impact),
+    quantize(card.visual.hover),
+  ].join('|')
+
+export const createDeskScene = ({
+  host,
+  initialZoom = 1,
+  onZoomChange,
+  onZoomMaxChange,
+}: DeskSceneOptions): DeskSceneController => {
   let disposed = false
   let app: Application | null = null
   let currentZoom = clamp(initialZoom, ZOOM.min, ZOOM.max)
+  let currentZoomMax: number = ZOOM.max
   let cameraOffset: Vec2 = { x: 0, y: 0 }
   const initialState = useGameStore.getState()
   const initialRows = getColumnSlotCounts(initialState)
@@ -85,8 +124,12 @@ export const createDeskScene = ({ host, initialZoom = 1, onZoomChange }: DeskSce
   let hoveredCard: CardView | null = null
   let activeCard: CardView | null = null
   let activePointerId: number | null = null
+  let activePan: CameraPan | null = null
   let pointer: PointerTracker = { x: 0, y: 0, previousX: 0, previousY: 0, vx: 0, vy: 0 }
   let rowMotionToken = 0
+  let sceneFrame = 0
+  let lastSceneFrameTime = 0
+  let isSceneLoopRunning = false
 
   const boardLayer = new Container()
   const cardLayer = new Container()
@@ -94,9 +137,93 @@ export const createDeskScene = ({ host, initialZoom = 1, onZoomChange }: DeskSce
   const columns = new Graphics()
   const labels = new Map<ColumnId, Text>()
   const cardViews = new Map<CardId, CardView>()
+  const cardRenderKeys = new Map<CardId, string>()
   const slotEffects = new Map<SlotId, SlotCollapseEffect>()
 
   const state = () => useGameStore.getState()
+
+  const renderScene = () => {
+    if (!app || disposed) {
+      return
+    }
+
+    app.render()
+  }
+
+  const hasUnsettledCardMotion = () => {
+    for (const card of cardViews.values()) {
+      if (card.phase === 'landing') {
+        return true
+      }
+
+      if (card.phase === 'held' && Math.abs(card.motion.lift - 1) > 0.01) {
+        return true
+      }
+
+      if (card.phase === 'idle' && Math.abs(card.motion.lift) > 0.01) {
+        return true
+      }
+
+      if (Math.abs(card.motion.impact) > 0.01) {
+        return true
+      }
+
+      if (card.phase !== 'held' && (Math.abs(card.x - card.restX) > 0.05 || Math.abs(card.y - card.restY) > 0.05)) {
+        return true
+      }
+
+      if (Math.abs(card.rotation) > 0.001 || Math.abs(card.tiltVelocity) > 0.001) {
+        return true
+      }
+    }
+
+    return false
+  }
+
+  const runSceneFrame = (now: number) => {
+    if (!isSceneLoopRunning || disposed) {
+      return
+    }
+
+    const elapsed = lastSceneFrameTime === 0 ? 16.67 : Math.min(now - lastSceneFrameTime, 34)
+    const delta = Math.min(elapsed / 16.67, 2)
+    let needsRender = false
+
+    lastSceneFrameTime = now
+    cardViews.forEach((card) => {
+      updateCardMotion(card, pointer, layout, delta)
+      const nextRenderKey = getCardRenderKey(card)
+
+      if (cardRenderKeys.get(card.id) !== nextRenderKey) {
+        drawCard(card, layout)
+        cardRenderKeys.set(card.id, nextRenderKey)
+        needsRender = true
+      }
+    })
+
+    if (needsRender) {
+      renderScene()
+    }
+
+    if (needsRender || hasUnsettledCardMotion()) {
+      sceneFrame = window.requestAnimationFrame(runSceneFrame)
+      return
+    }
+
+    isSceneLoopRunning = false
+    lastSceneFrameTime = 0
+    sceneFrame = 0
+  }
+
+  const startSceneLoop = () => {
+    if (isSceneLoopRunning || disposed) {
+      return
+    }
+
+    isSceneLoopRunning = true
+    lastSceneFrameTime = 0
+    sceneFrame = window.requestAnimationFrame(runSceneFrame)
+  }
 
   const localPoint = (event: Pick<MouseEvent, 'clientX' | 'clientY'>): Vec2 => {
     const bounds = host.getBoundingClientRect()
@@ -153,6 +280,7 @@ export const createDeskScene = ({ host, initialZoom = 1, onZoomChange }: DeskSce
         host.classList.remove('is-hovering-card')
       }
       cardViews.delete(cardId)
+      cardRenderKeys.delete(cardId)
     })
 
     ;(Object.keys(nextCards) as CardId[]).forEach((cardId) => {
@@ -200,13 +328,19 @@ export const createDeskScene = ({ host, initialZoom = 1, onZoomChange }: DeskSce
         card.flight.toY = pose.y
       }
 
-      if (card.x === 0 && card.y === 0) {
+      if (card.phase === 'idle' && !shouldHop) {
+        card.x = pose.x
+        card.y = pose.y
+        card.rotation = 0
+        card.tiltVelocity = 0
+      } else if (card.x === 0 && card.y === 0) {
         card.x = pose.x
         card.y = pose.y
       }
 
       if (shouldHop) {
         hopCardToRest(card, layout)
+        startSceneLoop()
       }
     })
   }
@@ -217,7 +351,11 @@ export const createDeskScene = ({ host, initialZoom = 1, onZoomChange }: DeskSce
     drawBoard(board, layout)
     drawColumns(columns, labels, layout, currentState, hoverColumnId, hoverSlotId, slotEffects.values())
     relayoutCards()
-    cardViews.forEach((card) => drawCard(card, layout))
+    cardViews.forEach((card) => {
+      drawCard(card, layout)
+      cardRenderKeys.set(card.id, getCardRenderKey(card))
+    })
+    renderScene()
   }
 
   const setHoveredCard = (card: CardView | null) => {
@@ -236,15 +374,54 @@ export const createDeskScene = ({ host, initialZoom = 1, onZoomChange }: DeskSce
     }
 
     host.classList.toggle('is-hovering-card', Boolean(hoveredCard))
+    startSceneLoop()
   }
 
   const recreateLayout = () => {
     const size = getHostSize(host, layout)
+    const nextZoomMax = getWorkspaceZoomLimit(size.width, size.height, state(), {
+      surfaceRowsByColumn: growthMotion.columnRows,
+      slotRowsByColumn: targetRowsByColumn,
+    })
+
+    if (Math.abs(nextZoomMax - currentZoomMax) > 0.001) {
+      currentZoomMax = nextZoomMax
+      onZoomMaxChange?.(nextZoomMax)
+    }
+
+    if (currentZoom > currentZoomMax) {
+      currentZoom = currentZoomMax
+      onZoomChange?.(currentZoom)
+    }
 
     layout = createLayout(size.width, size.height, currentZoom, cameraOffset, state(), {
       surfaceRowsByColumn: growthMotion.columnRows,
       slotRowsByColumn: targetRowsByColumn,
     })
+
+    const clampedOffset = clampCameraOffsetToLayout(layout, cameraOffset)
+
+    if (Math.abs(clampedOffset.x - cameraOffset.x) > 0.05 || Math.abs(clampedOffset.y - cameraOffset.y) > 0.05) {
+      cameraOffset = clampedOffset
+      layout = createLayout(size.width, size.height, currentZoom, cameraOffset, state(), {
+        surfaceRowsByColumn: growthMotion.columnRows,
+        slotRowsByColumn: targetRowsByColumn,
+      })
+    }
+
+    if (!activePan) {
+      const workspaceOffset = fitCameraOffsetToWorkspace(layout, cameraOffset)
+
+      if (Math.abs(workspaceOffset.x - cameraOffset.x) > 0.05 || Math.abs(workspaceOffset.y - cameraOffset.y) > 0.05) {
+        cameraOffset = workspaceOffset
+        layout = createLayout(size.width, size.height, currentZoom, cameraOffset, state(), {
+          surfaceRowsByColumn: growthMotion.columnRows,
+          slotRowsByColumn: targetRowsByColumn,
+        })
+      }
+    }
+
+    host.classList.toggle('is-pan-enabled', canPanLayout(layout))
   }
 
   const syncAndRedraw = () => {
@@ -357,39 +534,71 @@ export const createDeskScene = ({ host, initialZoom = 1, onZoomChange }: DeskSce
     syncAndRedraw()
   }
 
-  const setZoom = (nextZoom: number, focus = { x: layout.width / 2, y: layout.height / 2 }) => {
-    const clampedZoom = clamp(nextZoom, ZOOM.min, ZOOM.max)
+  const setZoom = (nextZoom: number) => {
+    const size = getHostSize(host, layout)
+    const nextZoomMax = getWorkspaceZoomLimit(size.width, size.height, state(), {
+      surfaceRowsByColumn: growthMotion.columnRows,
+      slotRowsByColumn: targetRowsByColumn,
+    })
+
+    if (Math.abs(nextZoomMax - currentZoomMax) > 0.001) {
+      currentZoomMax = nextZoomMax
+      onZoomMaxChange?.(nextZoomMax)
+    }
+
+    const clampedZoom = clamp(nextZoom, ZOOM.min, currentZoomMax)
 
     if (Math.abs(clampedZoom - currentZoom) < 0.001) {
       return
     }
 
-    const ratio = clampedZoom / currentZoom
-    const center = { x: layout.width / 2, y: layout.height / 2 }
-    const maxOffset = 86 * clampedZoom
+    const zoomRatio = clampedZoom / currentZoom
 
     cameraOffset = {
-      x: clamp(focus.x - center.x - (focus.x - center.x - cameraOffset.x) * ratio, -maxOffset, maxOffset),
-      y: clamp(focus.y - center.y - (focus.y - center.y - cameraOffset.y) * ratio, -maxOffset, maxOffset),
+      x: cameraOffset.x * zoomRatio,
+      y: cameraOffset.y * zoomRatio,
     }
     currentZoom = clampedZoom
+    cameraOffset = fitCameraOffsetToWorkspace(
+      createLayout(size.width, size.height, currentZoom, cameraOffset, state(), {
+        surfaceRowsByColumn: growthMotion.columnRows,
+        slotRowsByColumn: targetRowsByColumn,
+      }),
+      cameraOffset,
+    )
     onZoomChange?.(clampedZoom)
     syncAndRedraw()
   }
 
   const handleWheel = (event: WheelEvent) => {
-    const point = localPoint(event)
     const factor = Math.exp(-event.deltaY * 0.001)
 
-    setZoom(currentZoom * factor, point)
+    setZoom(currentZoom * factor)
     event.preventDefault()
   }
 
   const handlePointerDown = (event: PointerEvent) => {
+    if (event.button !== 0) {
+      return
+    }
+
     const point = localPoint(event)
     const card = hitCard(cardViews.values(), point)
 
     if (!card) {
+      if (!canPanLayout(layout)) {
+        return
+      }
+
+      setHoveredCard(null)
+      activePan = {
+        pointerId: event.pointerId,
+        startOffset: cameraOffset,
+        startPoint: point,
+      }
+      host.setPointerCapture(event.pointerId)
+      host.classList.add('is-panning')
+      event.preventDefault()
       return
     }
 
@@ -409,11 +618,22 @@ export const createDeskScene = ({ host, initialZoom = 1, onZoomChange }: DeskSce
     host.classList.add('is-dragging')
     useGameStore.getState().beginDrag(card.id, getSlotIdForCard(state(), card.id))
     liftCard(card)
+    startSceneLoop()
     event.preventDefault()
   }
 
   const handlePointerMove = (event: PointerEvent) => {
     const point = localPoint(event)
+
+    if (activePan?.pointerId === event.pointerId) {
+      cameraOffset = {
+        x: activePan.startOffset.x + point.x - activePan.startPoint.x,
+        y: activePan.startOffset.y + point.y - activePan.startPoint.y,
+      }
+      syncAndRedraw()
+      event.preventDefault()
+      return
+    }
 
     if (activePointerId !== event.pointerId || !activeCard) {
       setHoveredCard(hitCard(cardViews.values(), point))
@@ -426,13 +646,31 @@ export const createDeskScene = ({ host, initialZoom = 1, onZoomChange }: DeskSce
     pointer.previousY = pointer.y
     pointer.x = point.x
     pointer.y = point.y
-    hoverColumnId = validAdjacentDropColumn(layout, point, state().drag?.sourceColumnId ?? 'backlog')
-    hoverSlotId = hoverColumnId && activeCard ? getFirstFreeSlot(state(), hoverColumnId, activeCard.id) : null
-    drawColumns(columns, labels, layout, state(), hoverColumnId, hoverSlotId, slotEffects.values())
+    startSceneLoop()
+    const nextHoverColumnId = validAdjacentDropColumn(layout, point, state().drag?.sourceColumnId ?? 'backlog')
+    const nextHoverSlotId =
+      nextHoverColumnId && activeCard ? getFirstFreeSlot(state(), nextHoverColumnId, activeCard.id) : null
+
+    if (nextHoverColumnId !== hoverColumnId || nextHoverSlotId !== hoverSlotId) {
+      hoverColumnId = nextHoverColumnId
+      hoverSlotId = nextHoverSlotId
+      drawColumns(columns, labels, layout, state(), hoverColumnId, hoverSlotId, slotEffects.values())
+      renderScene()
+    }
     event.preventDefault()
   }
 
   const handlePointerUp = (event: PointerEvent) => {
+    if (activePan?.pointerId === event.pointerId) {
+      activePan = null
+      host.classList.remove('is-panning')
+      if (host.hasPointerCapture(event.pointerId)) {
+        host.releasePointerCapture(event.pointerId)
+      }
+      event.preventDefault()
+      return
+    }
+
     if (activePointerId !== event.pointerId || !activeCard) {
       return
     }
@@ -458,24 +696,16 @@ export const createDeskScene = ({ host, initialZoom = 1, onZoomChange }: DeskSce
 
     syncAndRedraw()
     settleCard(card, layout, targetColumnId)
+    startSceneLoop()
     event.preventDefault()
   }
 
   const handlePointerLeave = () => {
-    if (activeCard) {
+    if (activeCard || activePan) {
       return
     }
 
     setHoveredCard(null)
-  }
-
-  const tick = (ticker: Ticker) => {
-    const delta = Math.min(ticker.deltaMS / 16.67, 2)
-
-    cardViews.forEach((card) => {
-      updateCardMotion(card, pointer, layout, delta)
-      drawCard(card, layout)
-    })
   }
 
   const boot = async () => {
@@ -492,7 +722,8 @@ export const createDeskScene = ({ host, initialZoom = 1, onZoomChange }: DeskSce
       backgroundAlpha: 0,
       antialias: true,
       autoDensity: true,
-      resolution: Math.min(window.devicePixelRatio || 1, 2),
+      autoStart: false,
+      resolution: Math.min(window.devicePixelRatio || 1, PIXI_RESOLUTION_LIMIT),
     })
 
     if (disposed) {
@@ -512,7 +743,6 @@ export const createDeskScene = ({ host, initialZoom = 1, onZoomChange }: DeskSce
     app.stage.addChild(boardLayer, cardLayer)
     host.appendChild(app.canvas)
     syncAndRedraw()
-    app.ticker.add(tick)
   }
 
   const resizeObserver = new ResizeObserver(syncAndRedraw)
@@ -526,6 +756,7 @@ export const createDeskScene = ({ host, initialZoom = 1, onZoomChange }: DeskSce
   host.addEventListener('pointerleave', handlePointerLeave)
   host.addEventListener('wheel', handleWheel, { passive: false })
   onZoomChange?.(currentZoom)
+  onZoomMaxChange?.(currentZoomMax)
   void boot()
 
   return {
@@ -535,6 +766,9 @@ export const createDeskScene = ({ host, initialZoom = 1, onZoomChange }: DeskSce
       unsubscribe()
       resizeObserver.disconnect()
       clearBoardGrowth(growthMotion)
+      if (sceneFrame) {
+        window.cancelAnimationFrame(sceneFrame)
+      }
       slotEffects.forEach(clearSlotEffect)
       slotEffects.clear()
       host.removeEventListener('pointerdown', handlePointerDown)
@@ -543,7 +777,7 @@ export const createDeskScene = ({ host, initialZoom = 1, onZoomChange }: DeskSce
       host.removeEventListener('pointercancel', handlePointerUp)
       host.removeEventListener('pointerleave', handlePointerLeave)
       host.removeEventListener('wheel', handleWheel)
-      host.classList.remove('is-dragging', 'is-hovering-card')
+      host.classList.remove('is-dragging', 'is-hovering-card', 'is-panning', 'is-pan-enabled')
       cardViews.forEach((card) => {
         card.root.removeFromParent()
         card.root.destroy({ children: true })
@@ -554,7 +788,6 @@ export const createDeskScene = ({ host, initialZoom = 1, onZoomChange }: DeskSce
       })
 
       if (app) {
-        app.ticker.remove(tick)
         app.destroy(true, { children: true })
       }
     },

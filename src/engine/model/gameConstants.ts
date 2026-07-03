@@ -1,11 +1,12 @@
 export const BOARD_GEOMETRY = {
-  frontTiltY: 0.72,
-  farEdgeScale: 0.76,
-  nearEdgeScale: 1.1,
+  frontTiltY: 0.82,
+  farEdgeScale: 0.84,
+  nearEdgeScale: 1.06,
   deskPaddingU: 58,
   deskPaddingV: 58,
   columnWidth: 258,
   columnGap: 28,
+  inspectorSectionWidthFactor: 1.5,
   columnLabelGapV: 32,
   columnBottomPaddingV: 58,
   cardStartV: 24,
@@ -25,7 +26,7 @@ export const CARD_SIZE = {
 
 export const ZOOM = {
   min: 0.84,
-  max: 1.08,
+  max: 1.5,
   step: 0.1,
 } as const
 

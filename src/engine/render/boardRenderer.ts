@@ -8,6 +8,22 @@ import type { SlotCollapseEffect } from '../animation/slotMotion'
 import { drawRoundedPolygon, scalePolygonFromCenter } from './pixiPrimitives'
 import { applySurfaceTextTransform } from './textTransform'
 
+const DESK_EDGE_VISIBILITY_MARGIN = 42
+
+const shouldDrawFiniteDesk = (layout: SceneLayout) => {
+  const minX = Math.min(...layout.deskPolygon.map((point) => point.x))
+  const maxX = Math.max(...layout.deskPolygon.map((point) => point.x))
+  const minY = Math.min(...layout.deskPolygon.map((point) => point.y))
+  const maxY = Math.max(...layout.deskPolygon.map((point) => point.y))
+
+  return (
+    minX >= DESK_EDGE_VISIBILITY_MARGIN &&
+    maxX <= layout.width - DESK_EDGE_VISIBILITY_MARGIN &&
+    minY >= DESK_EDGE_VISIBILITY_MARGIN &&
+    maxY <= layout.height - DESK_EDGE_VISIBILITY_MARGIN
+  )
+}
+
 export const createColumnLabel = (title: string) => {
   const label = new Text({
     text: title,
@@ -27,6 +43,12 @@ export const createColumnLabel = (title: string) => {
 
 export const drawBoard = (graphics: Graphics, layout: SceneLayout) => {
   graphics.clear()
+
+  if (!shouldDrawFiniteDesk(layout)) {
+    graphics.rect(0, 0, layout.width, layout.height).fill({ color: TOKENS.desk.fill, alpha: 0.72 })
+    return
+  }
+
   drawRoundedPolygon(
     graphics,
     layout.deskPolygon,
@@ -50,6 +72,18 @@ export const drawColumns = (
 ) => {
   graphics.clear()
   const visualPlacements = getCompactPlacements(state)
+
+  drawRoundedPolygon(
+    graphics,
+    layout.inspectorSectionPolygon,
+    TOKENS.column.radius * layout.scale,
+    TOKENS.column.fill,
+    1,
+    TOKENS.column.border,
+    1,
+    1.5 * layout.scale,
+  )
+
   state.columns.forEach((column) => {
     const columnIndex = COLUMN_IDS.indexOf(column.id)
     const polygon = layout.columnPolygons[column.id]

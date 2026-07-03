@@ -6,6 +6,7 @@ export function IsometricDesk() {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const sceneRef = useRef<DeskSceneController | null>(null)
   const [zoom, setZoom] = useState(1)
+  const [zoomMax, setZoomMax] = useState<number>(ZOOM.max)
 
   useEffect(() => {
     const host = hostRef.current
@@ -18,6 +19,7 @@ export function IsometricDesk() {
       host,
       initialZoom: 1,
       onZoomChange: setZoom,
+      onZoomMaxChange: setZoomMax,
     })
 
     sceneRef.current = scene
@@ -43,7 +45,7 @@ export function IsometricDesk() {
           aria-label="Zoom"
           type="range"
           min={ZOOM.min}
-          max={ZOOM.max}
+          max={zoomMax}
           step={0.01}
           value={zoom}
           onChange={(event) => requestZoom(Number(event.currentTarget.value))}
