@@ -6,6 +6,7 @@ import { projectWithContext } from '../layout/projection'
 import { getCompactPlacements, parseSlotId } from '../model/placementRules'
 import type { SlotCollapseEffect } from '../animation/slotMotion'
 import { drawRoundedPolygon, scalePolygonFromCenter } from './pixiPrimitives'
+import { applySurfaceTextTransform } from './textTransform'
 
 export const createColumnLabel = (title: string) => {
   const label = new Text({
@@ -96,7 +97,7 @@ export const drawColumns = (
       const isOccupied = occupiedRows.has(rowIndex)
       const slotRadius = TOKENS.slot.radius * layout.scale
       const slotBorder = isDropSlot ? TOKENS.slot.dropBorder : TOKENS.slot.emptyBorder
-      const slotBorderAlpha = isDropSlot ? 0.65 : 0.75
+      const slotBorderAlpha = isDropSlot ? 0.65 : 0.5
 
       drawRoundedPolygon(
         graphics,
@@ -106,20 +107,18 @@ export const drawColumns = (
         isDropSlot ? 0.55 : isOccupied ? 0.08 : 0.18,
         isOccupied ? 0 : slotBorder,
         isOccupied ? 0 : slotBorderAlpha,
-        1.5 * layout.scale,
+        1.25 * layout.scale,
       )
     }
 
     if (label) {
       const labelU = getColumnU(columnIndex) + BOARD_GEOMETRY.columnWidth / 2
-      const labelV = BOARD_GEOMETRY.columnLabelV
+      const labelV = BOARD_GEOMETRY.deskPaddingV - BOARD_GEOMETRY.columnLabelGapV
       const labelPoint = projectWithContext(labelU, labelV, layout)
 
       label.x = labelPoint.x
       label.y = labelPoint.y
-      label.rotation = 0
-      label.skew.set(0, 0)
-      label.scale.set(Math.max(0.82, Math.min(layout.scale * 0.92, 1.08)))
+      applySurfaceTextTransform(label, layout, labelU, labelV, 0.92)
       label.alpha = 0.92
     }
   })

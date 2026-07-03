@@ -1,9 +1,7 @@
-import { COLUMN_IDS, type BoardState, type ColumnId, type SlotId } from '../model/boardTypes'
+import { COLUMN_IDS, type BoardState, type ColumnId, type ColumnRowCounts, type SlotId } from '../model/boardTypes'
 import { BOARD_GEOMETRY, CARD_SIZE } from '../model/gameConstants'
 import { getColumnSlotCounts, makeSlotId, parseSlotId } from '../model/placementRules'
 import { projectRaw, projectWithContext, type Polygon, type ProjectionContext, type Vec2 } from './projection'
-
-export type ColumnRowCounts = Record<ColumnId, number>
 
 export type SceneLayout = ProjectionContext & {
   width: number

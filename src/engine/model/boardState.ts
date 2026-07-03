@@ -4,25 +4,25 @@ import { makeSlotId } from './placementRules'
 export const cards: Record<CardId, BoardCard> = {
   'card-1': {
     id: 'card-1',
-    title: 'Motion pass',
+    title: 'Оптимизировать воркер уведомлений',
     kicker: 'interaction',
     accent: 0xf28c28,
   },
   'card-2': {
     id: 'card-2',
-    title: 'Desk lighting',
+    title: 'Экспортировать данные пользователя по запросу',
     kicker: 'visual',
     accent: 0x2bbf7f,
   },
   'card-3': {
     id: 'card-3',
-    title: 'Drop targets',
+    title: 'Закешировать админский дашборд',
     kicker: 'rules',
     accent: 0x3478f6,
   },
   'card-4': {
     id: 'card-4',
-    title: 'Slap landing',
+    title: 'Импортировать каталог партнера',
     kicker: 'feel',
     accent: 0xf0526b,
   },

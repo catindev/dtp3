@@ -1,5 +1,5 @@
 import { gsap } from 'gsap'
-import type { ColumnRowCounts } from '../layout/boardLayout'
+import type { ColumnRowCounts } from '../model/boardTypes'
 
 export type BoardGrowthMotion = {
   columnRows: ColumnRowCounts

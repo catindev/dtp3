@@ -17,6 +17,15 @@ export const clearCardTweens = (card: CardView) => {
   gsap.killTweensOf(card.motion)
 }
 
+export const setCardHover = (card: CardView, isHovered: boolean) => {
+  gsap.killTweensOf(card.visual)
+  gsap.to(card.visual, {
+    hover: isHovered ? 1 : 0,
+    duration: isHovered ? 0.18 : 0.12,
+    ease: isHovered ? 'back.out(1.9)' : 'power2.out',
+  })
+}
+
 export const liftCard = (card: CardView) => {
   clearCardTweens(card)
   gsap.to(card.motion, {

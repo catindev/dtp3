@@ -23,12 +23,18 @@ The prototype is split into engine layers so the board can evolve into a game-li
   - Converts board coordinates to screen coordinates.
   - Computes desk, column, slot, and card-rest geometry.
 
+- Effects: `src/engine/effects`
+  - Converts model changes into renderer-agnostic effect plans.
+  - `boardRowEffects.ts`: compares previous/next row counts, lists removed slots, and decides which board height motion runs immediately vs after slot collapse.
+
 - Render: `src/engine/render`
   - `createDeskScene.ts`: Pixi lifecycle, pointer events, store subscription.
+  - Executes effect plans from `src/engine/effects`; it should not decide row growth/shrink rules directly.
   - `boardRenderer.ts`: desk, columns, labels, empty slots.
   - `cardView.ts`: card graphics, card text, shadows, hit polygons.
+  - `cardTypography.ts`: title line fitting and two-line ellipsis for card text.
   - `textTransform.ts`: surface-aligned Pixi text transforms.
-  - `pixiPrimitives.ts`: reusable polygon drawing helpers.
+  - `pixiPrimitives.ts`: reusable polygon drawing and polygon scaling helpers.
 
 - Interaction: `src/engine/interaction`
   - Hit testing for cards and columns.
@@ -37,6 +43,7 @@ The prototype is split into engine layers so the board can evolve into a game-li
 - Animation: `src/engine/animation`
   - GSAP lift/landing tweens.
   - Per-frame physical drag response.
+  - Hover/held visual state tweens for cards.
 
 ## Dependency Direction
 
@@ -49,8 +56,10 @@ flowchart LR
   Scene --> Render["Render helpers"]
   Scene --> Interaction["Interaction helpers"]
   Scene --> Animation["Animation helpers"]
+  Scene --> Effects["Effect planners"]
   Render --> Layout["Layout/projection"]
   Interaction --> Layout
+  Effects --> Model
   Layout --> Model["Model/constants"]
   Store --> Model
   Animation --> Render

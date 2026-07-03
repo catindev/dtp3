@@ -59,6 +59,21 @@ export const scalePolygon = (polygon: Polygon, scaleX: number, scaleY = scaleX) 
     y: point.y * scaleY,
   }))
 
+export const spreadPolygon = (polygon: Polygon, spread: number) => {
+  const minX = Math.min(...polygon.map((point) => point.x))
+  const maxX = Math.max(...polygon.map((point) => point.x))
+  const minY = Math.min(...polygon.map((point) => point.y))
+  const maxY = Math.max(...polygon.map((point) => point.y))
+  const width = maxX - minX
+  const height = maxY - minY
+
+  return scalePolygon(
+    polygon,
+    width > 0 ? (width + spread * 2) / width : 1,
+    height > 0 ? (height + spread * 2) / height : 1,
+  )
+}
+
 export const scalePolygonFromCenter = (polygon: Polygon, scaleX: number, scaleY = scaleX) => {
   const center = polygon.reduce(
     (sum, point) => ({

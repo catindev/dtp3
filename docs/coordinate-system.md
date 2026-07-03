@@ -33,3 +33,7 @@ Use `getSlotPose(layout, slotId)` for card rest positions. It returns both logic
 Idle cards use `getCardRestCorners(layout, restU, restV)`, so they lie on the projected table surface.
 
 Held cards interpolate into a screen-space rectangular shape. The held card still keeps its source `restU/restV` for shadow direction and text interpolation.
+
+Card titles are formatted by `src/engine/render/cardTypography.ts`. They render as at most two lines; overflowing text is truncated with `...` before Pixi draws it.
+
+Empty slots use the same board-space card width and height as idle cards. Slot stroke is intentionally lighter than card borders, so empty space reads as a placement guide rather than another card.

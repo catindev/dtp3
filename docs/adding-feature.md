@@ -5,17 +5,22 @@ Use this checklist when starting a new chat or adding a feature.
 ## 1. Locate the Layer
 
 - Game rule or placement behavior: `src/engine/model/placementRules.ts`.
+- State transition side effects such as slot collapse or board growth order: `src/engine/effects`.
 - New state or action: `src/store/gameStore.ts`.
 - Board/card size or color: `src/engine/model/gameConstants.ts`.
 - Projection or slot geometry: `src/engine/layout`.
-- Pixi object lifecycle or event wiring: `src/engine/render/createDeskScene.ts`.
+- Pixi object lifecycle, event wiring, and effect execution: `src/engine/render/createDeskScene.ts`.
 - Drawing details: `src/engine/render/boardRenderer.ts` or `src/engine/render/cardView.ts`.
+- Card title fitting or truncation: `src/engine/render/cardTypography.ts`.
 - Drag physics or GSAP landing: `src/engine/animation/cardMotion.ts`.
+- Card hover/held highlight timing: `src/engine/animation/cardMotion.ts`.
 - Hit testing or allowed drop areas: `src/engine/interaction/hitTest.ts`.
 
 ## 2. Keep Rules Testable
 
 Prefer pure functions in `src/engine/model`. A placement feature should usually be expressible without Pixi, DOM, or GSAP.
+
+When a rule needs animation side effects, first return a plain effect plan from `src/engine/effects`, then let `createDeskScene.ts` execute that plan. Avoid embedding new rule decisions directly inside Pixi event handlers or render code.
 
 ## 3. Keep Units Consistent
 

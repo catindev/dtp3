@@ -3,23 +3,23 @@ export const BOARD_GEOMETRY = {
   farEdgeScale: 0.76,
   nearEdgeScale: 1.1,
   deskPaddingU: 58,
-  deskPaddingV: 46,
-  columnWidth: 214,
+  deskPaddingV: 58,
+  columnWidth: 258,
   columnGap: 28,
-  columnLabelV: 26,
+  columnLabelGapV: 32,
   columnBottomPaddingV: 58,
-  cardStartV: 64,
-  cardInsetU: 29,
+  cardStartV: 24,
+  cardInsetU: 25,
   cardGapV: 20,
-  slotExtraWidth: 10,
-  slotExtraHeight: 8,
-  slotOffsetU: -5,
-  slotOffsetV: -7,
+  slotExtraWidth: 0,
+  slotExtraHeight: 0,
+  slotOffsetU: 0,
+  slotOffsetV: 0,
 } as const
 
 export const CARD_SIZE = {
-  width: 156,
-  height: 86,
+  width: 208,
+  height: 104,
   padding: 24,
 } as const
 
@@ -47,6 +47,7 @@ export const TOKENS = {
   card: {
     fill: 0xfffdf6,
     border: 0xd8cdb2,
+    hoverBorder: 0xc9702a,
     radius: 10,
   },
   slot: {

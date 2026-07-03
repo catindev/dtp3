@@ -6,7 +6,20 @@ import {
   settleBoardGrowth,
   type BoardGrowthMotion,
 } from '../animation/boardGrowthMotion'
-import { hopCardToRest, liftCard, settleCard, updateCardMotion, type PointerTracker } from '../animation/cardMotion'
+import {
+  cloneRows,
+  createBoardRowsEffectPlan,
+  type BoardRowsMotionEffect,
+  type RemovedSlotEffect,
+} from '../effects/boardRowEffects'
+import {
+  hopCardToRest,
+  liftCard,
+  setCardHover,
+  settleCard,
+  updateCardMotion,
+  type PointerTracker,
+} from '../animation/cardMotion'
 import {
   clearSlotEffect,
   collapseSlot,
@@ -14,14 +27,15 @@ import {
   type SlotCollapseEffect,
 } from '../animation/slotMotion'
 import { hitCard, validAdjacentDropColumn } from '../interaction/hitTest'
-import { createLayout, getSlotPose, type ColumnRowCounts, type SceneLayout } from '../layout/boardLayout'
+import { createLayout, getSlotPose, type SceneLayout } from '../layout/boardLayout'
 import type { Vec2 } from '../layout/projection'
-import { COLUMN_IDS, type CardId, type ColumnId, type SlotId } from '../model/boardTypes'
+import { COLUMN_IDS, type CardId, type ColumnId, type ColumnRowCounts, type SlotId } from '../model/boardTypes'
 import { ZOOM } from '../model/gameConstants'
-import { getColumnSlotCounts, getCompactPlacements, getFirstFreeSlot, getSlotIdForCard, makeSlotId } from '../model/placementRules'
+import { getColumnSlotCounts, getCompactPlacements, getFirstFreeSlot, getSlotIdForCard } from '../model/placementRules'
 import { useGameStore } from '../../store/gameStore'
 import { clamp } from '../math/easing'
 import { drawBoard, drawColumns, createColumnLabel } from './boardRenderer'
+import { formatCardTitle } from './cardTypography'
 import { createCardView, drawCard, type CardView } from './cardView'
 
 export type DeskSceneController = {
@@ -39,23 +53,6 @@ const getHostSize = (host: HTMLDivElement, fallback?: SceneLayout) => ({
   width: host.clientWidth || fallback?.width || 960,
   height: host.clientHeight || fallback?.height || 640,
 })
-
-const cloneRows = (rows: ColumnRowCounts) =>
-  Object.fromEntries(COLUMN_IDS.map((columnId) => [columnId, rows[columnId]])) as ColumnRowCounts
-
-const rowsChanged = (from: ColumnRowCounts, to: ColumnRowCounts) =>
-  COLUMN_IDS.some((columnId) => Math.abs(from[columnId] - to[columnId]) > 0.001)
-
-const hasRowGrowth = (from: ColumnRowCounts, to: ColumnRowCounts) =>
-  COLUMN_IDS.some((columnId) => to[columnId] > from[columnId])
-
-const hasRowShrink = (from: ColumnRowCounts, to: ColumnRowCounts) =>
-  COLUMN_IDS.some((columnId) => to[columnId] < from[columnId])
-
-const getRowsWithDelayedShrink = (from: ColumnRowCounts, to: ColumnRowCounts) =>
-  Object.fromEntries(
-    COLUMN_IDS.map((columnId) => [columnId, to[columnId] > from[columnId] ? to[columnId] : from[columnId]]),
-  ) as ColumnRowCounts
 
 const loadSceneFonts = async () => {
   if (!document.fonts) {
@@ -85,6 +82,7 @@ export const createDeskScene = ({ host, initialZoom = 1, onZoomChange }: DeskSce
   })
   let hoverColumnId: ColumnId | null = null
   let hoverSlotId: SlotId | null = null
+  let hoveredCard: CardView | null = null
   let activeCard: CardView | null = null
   let activePointerId: number | null = null
   let pointer: PointerTracker = { x: 0, y: 0, previousX: 0, previousY: 0, vx: 0, vy: 0 }
@@ -150,6 +148,10 @@ export const createDeskScene = ({ host, initialZoom = 1, onZoomChange }: DeskSce
 
       card.root.removeFromParent()
       card.root.destroy({ children: true })
+      if (hoveredCard?.id === cardId) {
+        hoveredCard = null
+        host.classList.remove('is-hovering-card')
+      }
       cardViews.delete(cardId)
     })
 
@@ -159,7 +161,7 @@ export const createDeskScene = ({ host, initialZoom = 1, onZoomChange }: DeskSce
 
       if (existing) {
         existing.data = data
-        existing.title.text = data.title
+        existing.title.text = formatCardTitle(data.title)
         existing.kicker.text = data.kicker.toUpperCase()
         return
       }
@@ -218,6 +220,24 @@ export const createDeskScene = ({ host, initialZoom = 1, onZoomChange }: DeskSce
     cardViews.forEach((card) => drawCard(card, layout))
   }
 
+  const setHoveredCard = (card: CardView | null) => {
+    if (hoveredCard === card) {
+      return
+    }
+
+    if (hoveredCard) {
+      setCardHover(hoveredCard, false)
+    }
+
+    hoveredCard = card
+
+    if (hoveredCard) {
+      setCardHover(hoveredCard, true)
+    }
+
+    host.classList.toggle('is-hovering-card', Boolean(hoveredCard))
+  }
+
   const recreateLayout = () => {
     const size = getHostSize(host, layout)
 
@@ -245,41 +265,34 @@ export const createDeskScene = ({ host, initialZoom = 1, onZoomChange }: DeskSce
     })
   }
 
-  const startRemovedSlotEffects = (
-    previousRows: ColumnRowCounts,
-    nextRows: ColumnRowCounts,
-    onComplete: () => void,
-  ) => {
+  const startRemovedSlotEffects = (removedSlots: RemovedSlotEffect[], onComplete: () => void) => {
     let remainingEffects = 0
 
-    COLUMN_IDS.forEach((columnId) => {
-      for (let rowIndex = nextRows[columnId]; rowIndex < previousRows[columnId]; rowIndex += 1) {
-        const slotId = makeSlotId(columnId, rowIndex)
-        const existingEffect = slotEffects.get(slotId)
-        const effect = createSlotCollapseEffect(slotId, columnId, rowIndex)
+    removedSlots.forEach((removedSlot) => {
+      const existingEffect = slotEffects.get(removedSlot.slotId)
+      const effect = createSlotCollapseEffect(removedSlot.slotId, removedSlot.columnId, removedSlot.rowIndex)
 
-        if (existingEffect) {
-          clearSlotEffect(existingEffect)
-        }
-
-        remainingEffects += 1
-        slotEffects.set(slotId, effect)
-        collapseSlot(
-          effect,
-          syncAndRedraw,
-          () => {
-            if (slotEffects.get(slotId) === effect) {
-              slotEffects.delete(slotId)
-            }
-            syncAndRedraw()
-            remainingEffects -= 1
-
-            if (remainingEffects === 0) {
-              onComplete()
-            }
-          },
-        )
+      if (existingEffect) {
+        clearSlotEffect(existingEffect)
       }
+
+      remainingEffects += 1
+      slotEffects.set(removedSlot.slotId, effect)
+      collapseSlot(
+        effect,
+        syncAndRedraw,
+        () => {
+          if (slotEffects.get(removedSlot.slotId) === effect) {
+            slotEffects.delete(removedSlot.slotId)
+          }
+          syncAndRedraw()
+          remainingEffects -= 1
+
+          if (remainingEffects === 0) {
+            onComplete()
+          }
+        },
+      )
     })
 
     if (remainingEffects === 0) {
@@ -287,43 +300,53 @@ export const createDeskScene = ({ host, initialZoom = 1, onZoomChange }: DeskSce
     }
   }
 
+  const applyBoardRowsMotion = (motion: BoardRowsMotionEffect) => {
+    if (motion.type === 'grow') {
+      animateBoardGrowth(growthMotion, motion.targetRows, syncAndRedraw)
+      return
+    }
+
+    if (motion.type === 'hold') {
+      clearBoardGrowth(growthMotion)
+      COLUMN_IDS.forEach((columnId) => {
+        growthMotion.columnRows[columnId] = Math.max(growthMotion.columnRows[columnId], motion.targetRows[columnId])
+      })
+      return
+    }
+
+    settleBoardGrowth(growthMotion, motion.targetRows, syncAndRedraw)
+  }
+
   const syncStoreState = () => {
     const currentState = state()
     const nextRows = getColumnSlotCounts(currentState)
+    const rowEffectPlan = createBoardRowsEffectPlan(targetRowsByColumn, nextRows)
 
-    if (rowsChanged(targetRowsByColumn, nextRows)) {
-      const previousRows = cloneRows(targetRowsByColumn)
-      const shouldGrow = hasRowGrowth(previousRows, nextRows)
-      const shouldShrink = hasRowShrink(previousRows, nextRows)
+    if (rowEffectPlan.changed) {
       const motionToken = (rowMotionToken += 1)
-      const finishShrink = () => {
+      const runAfterRemovedSlotsMotion = () => {
         if (disposed || motionToken !== rowMotionToken) {
           return
         }
 
-        settleBoardGrowth(growthMotion, targetRowsByColumn, syncAndRedraw)
+        if (rowEffectPlan.afterRemovedSlotsMotion) {
+          applyBoardRowsMotion(rowEffectPlan.afterRemovedSlotsMotion)
+        }
       }
 
-      targetRowsByColumn = cloneRows(nextRows)
+      targetRowsByColumn = cloneRows(rowEffectPlan.nextRows)
       clearRevivedSlotEffects(targetRowsByColumn)
 
-      if (shouldShrink) {
-        startRemovedSlotEffects(previousRows, nextRows, finishShrink)
+      if (rowEffectPlan.removedSlots.length > 0) {
+        startRemovedSlotEffects(rowEffectPlan.removedSlots, runAfterRemovedSlotsMotion)
       }
 
-      if (shouldGrow) {
-        animateBoardGrowth(
-          growthMotion,
-          shouldShrink ? getRowsWithDelayedShrink(previousRows, nextRows) : nextRows,
-          syncAndRedraw,
-        )
-      } else if (shouldShrink) {
-        clearBoardGrowth(growthMotion)
-        COLUMN_IDS.forEach((columnId) => {
-          growthMotion.columnRows[columnId] = Math.max(growthMotion.columnRows[columnId], previousRows[columnId])
-        })
-      } else {
-        settleBoardGrowth(growthMotion, nextRows, syncAndRedraw)
+      if (rowEffectPlan.immediateMotion) {
+        applyBoardRowsMotion(rowEffectPlan.immediateMotion)
+      }
+
+      if (rowEffectPlan.removedSlots.length === 0) {
+        runAfterRemovedSlotsMotion()
       }
 
       syncAndRedraw()
@@ -372,8 +395,10 @@ export const createDeskScene = ({ host, initialZoom = 1, onZoomChange }: DeskSce
 
     activeCard = card
     activePointerId = event.pointerId
+    setHoveredCard(card)
     pointer = { x: point.x, y: point.y, previousX: point.x, previousY: point.y, vx: 0, vy: 0 }
     card.phase = 'held'
+    setCardHover(card, true)
     card.dragOffset = { x: card.x - point.x, y: card.y - point.y }
     card.flight = null
     card.motion.fly = 1
@@ -391,7 +416,7 @@ export const createDeskScene = ({ host, initialZoom = 1, onZoomChange }: DeskSce
     const point = localPoint(event)
 
     if (activePointerId !== event.pointerId || !activeCard) {
-      host.classList.toggle('is-hovering-card', Boolean(hitCard(cardViews.values(), point)))
+      setHoveredCard(hitCard(cardViews.values(), point))
       return
     }
 
@@ -419,6 +444,8 @@ export const createDeskScene = ({ host, initialZoom = 1, onZoomChange }: DeskSce
       useGameStore.getState().moveCardToColumn(card.id, targetColumnId)
     }
 
+    setHoveredCard(null)
+    setCardHover(card, false)
     useGameStore.getState().endDrag()
     hoverColumnId = null
     hoverSlotId = null
@@ -432,6 +459,14 @@ export const createDeskScene = ({ host, initialZoom = 1, onZoomChange }: DeskSce
     syncAndRedraw()
     settleCard(card, layout, targetColumnId)
     event.preventDefault()
+  }
+
+  const handlePointerLeave = () => {
+    if (activeCard) {
+      return
+    }
+
+    setHoveredCard(null)
   }
 
   const tick = (ticker: Ticker) => {
@@ -488,6 +523,7 @@ export const createDeskScene = ({ host, initialZoom = 1, onZoomChange }: DeskSce
   host.addEventListener('pointermove', handlePointerMove)
   host.addEventListener('pointerup', handlePointerUp)
   host.addEventListener('pointercancel', handlePointerUp)
+  host.addEventListener('pointerleave', handlePointerLeave)
   host.addEventListener('wheel', handleWheel, { passive: false })
   onZoomChange?.(currentZoom)
   void boot()
@@ -505,6 +541,7 @@ export const createDeskScene = ({ host, initialZoom = 1, onZoomChange }: DeskSce
       host.removeEventListener('pointermove', handlePointerMove)
       host.removeEventListener('pointerup', handlePointerUp)
       host.removeEventListener('pointercancel', handlePointerUp)
+      host.removeEventListener('pointerleave', handlePointerLeave)
       host.removeEventListener('wheel', handleWheel)
       host.classList.remove('is-dragging', 'is-hovering-card')
       cardViews.forEach((card) => {

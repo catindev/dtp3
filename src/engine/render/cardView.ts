@@ -6,7 +6,8 @@ import { projectWithContext, surfaceOffset } from '../layout/projection'
 import { clamp, easeOutQuad, lerp } from '../math/easing'
 import type { Polygon, Vec2 } from '../layout/projection'
 import { applySurfaceTextTransform } from './textTransform'
-import { drawRoundedPolygon, offsetPolygon, scalePolygon } from './pixiPrimitives'
+import { CARD_TITLE_STYLE, formatCardTitle } from './cardTypography'
+import { drawRoundedPolygon, offsetPolygon, scalePolygon, spreadPolygon } from './pixiPrimitives'
 
 export type CardPhase = 'idle' | 'held' | 'landing'
 
@@ -43,6 +44,9 @@ export type CardView = {
     fly: number
     impact: number
   }
+  visual: {
+    hover: number
+  }
   phase: CardPhase
   flight: Flight | null
   hitPolygon: Polygon
@@ -60,7 +64,7 @@ const rotatePoint = (point: Vec2, rotation: number): Vec2 => {
 }
 
 const getHeldCardSize = (layout: SceneLayout) => ({
-  width: (CARD_SIZE.width + 26) * layout.scale,
+  width: (CARD_SIZE.width + 8) * layout.scale,
   height: (CARD_SIZE.height + 28) * layout.scale,
 })
 
@@ -126,14 +130,8 @@ export const createCardView = (card: BoardCard) => {
   const shine = new Graphics()
   const accent = new Graphics()
   const title = new Text({
-    text: card.title,
-    style: {
-      fill: TOKENS.text.primary,
-      fontFamily: 'Onest Variable, ui-sans-serif, system-ui, sans-serif',
-      fontSize: 16,
-      fontWeight: '700',
-      letterSpacing: 0,
-    },
+    text: formatCardTitle(card.title),
+    style: CARD_TITLE_STYLE,
   })
   const kicker = new Text({
     text: card.kicker.toUpperCase(),
@@ -146,7 +144,7 @@ export const createCardView = (card: BoardCard) => {
     },
   })
 
-  title.anchor.set(0, 0.5)
+  title.anchor.set(0, 0)
   kicker.anchor.set(0, 0.5)
   root.addChild(shadow, body, shine, accent, title, kicker)
 
@@ -171,6 +169,7 @@ export const createCardView = (card: BoardCard) => {
     targetRotation: 0,
     dragOffset: { x: 0, y: 0 },
     motion: { lift: 0, fly: 1, impact: 0 },
+    visual: { hover: 0 },
     phase: 'idle',
     flight: null,
     hitPolygon: [],
@@ -187,6 +186,10 @@ export const drawCard = (card: CardView, layout: SceneLayout) => {
   const restCorners = getCardRestCorners(layout, card.restU, card.restV)
   const liftedCorners = getHeldCardCorners(layout)
   const corners = mixCorners(restCorners, liftedCorners, shapeLift)
+  const hoverMotion = clamp(Math.max(card.visual.hover, card.phase === 'held' ? 1 : 0), 0, 1.18)
+  const hoverAlpha = clamp(hoverMotion, 0, 1)
+  const idleHoverMotion = card.phase === 'idle' ? clamp(card.visual.hover, 0, 1.18) : 0
+  const idleHoverAlpha = clamp(idleHoverMotion, 0, 1)
   const contentLift = easeOutQuad(shapeLift)
   const cardLeftU = -CARD_SIZE.width / 2
   const cardTopV = -CARD_SIZE.height / 2
@@ -205,13 +208,13 @@ export const drawCard = (card: CardView, layout: SceneLayout) => {
   const accentCorners = mixPolygon(accentSurface, accentScreen, contentLift)
   const kickerSurface = getSurfaceLocalPoint(layout, card, contentLeftU, contentTopV + 12)
   const kickerScreen = { x: heldContentLeft, y: heldContentTop + 12 * layout.scale }
-  const titleSurface = getSurfaceLocalPoint(layout, card, contentLeftU, contentTopV + 32)
-  const titleScreen = { x: heldContentLeft, y: heldContentTop + 32 * layout.scale }
+  const titleSurface = getSurfaceLocalPoint(layout, card, contentLeftU, contentTopV + 24)
+  const titleScreen = { x: heldContentLeft, y: heldContentTop + 24 * layout.scale }
   const kickerPoint = mixPoint(kickerSurface, kickerScreen, contentLift)
   const titlePoint = mixPoint(titleSurface, titleScreen, contentLift)
   const textU = card.restU + contentLeftU
   const kickerV = card.restV + contentTopV + 12
-  const titleV = card.restV + contentTopV + 32
+  const titleV = card.restV + contentTopV + 24
   const floorOffset = surfaceOffset(layout, card.restU, card.restV, 2 + lift * 11 + impact * 2)
   const castOffset = {
     x: floorOffset.x + (3 + lift * 12) * layout.scale,
@@ -253,6 +256,25 @@ export const drawCard = (card: CardView, layout: SceneLayout) => {
     SURFACE_SHADOW,
     lift * 0.035,
   )
+  if (idleHoverMotion > 0.001) {
+    const outlineSpread = 2.3 * layout.scale * idleHoverMotion
+    const dropSpread = 5 * layout.scale * idleHoverMotion
+
+    drawRoundedPolygon(
+      card.shadow,
+      offsetPolygon(spreadPolygon(corners, dropSpread), 0, 3 * layout.scale * idleHoverMotion),
+      TOKENS.card.radius * layout.scale + dropSpread * 0.65,
+      SURFACE_SHADOW,
+      0.07 * idleHoverAlpha,
+    )
+    drawRoundedPolygon(
+      card.shadow,
+      spreadPolygon(corners, outlineSpread),
+      TOKENS.card.radius * layout.scale + outlineSpread,
+      TOKENS.card.hoverBorder,
+      0.22 * idleHoverAlpha,
+    )
+  }
   drawRoundedPolygon(
     card.body,
     corners,
@@ -263,6 +285,18 @@ export const drawCard = (card: CardView, layout: SceneLayout) => {
     1,
     1.5 * layout.scale,
   )
+  if (hoverMotion > 0.001) {
+    drawRoundedPolygon(
+      card.body,
+      corners,
+      TOKENS.card.radius * layout.scale,
+      TOKENS.card.fill,
+      0,
+      TOKENS.card.hoverBorder,
+      hoverAlpha,
+      (1.5 + Math.max(0, hoverMotion - 1) * 1.2) * layout.scale,
+    )
+  }
 
   drawRoundedPolygon(
     card.accent,
