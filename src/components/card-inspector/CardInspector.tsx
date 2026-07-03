@@ -1,6 +1,7 @@
-import { useMemo } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { useGameStore } from '../../store/gameStore'
-import { getCardDetailModel, type CardDetailMetric } from '../../engine/model/cardDetails'
+import { getCardDetailModel, type CardDetailMetric, type CardDetailModel } from '../../engine/model/cardDetails'
 import './CardInspector.css'
 
 const colorToCss = (color: number) => `#${color.toString(16).padStart(6, '0')}`
@@ -14,53 +15,118 @@ function Metric({ metric }: { metric: CardDetailMetric }) {
   )
 }
 
-export function CardInspector() {
-  const hoveredCardId = useGameStore((state) => state.hoveredCardId)
-  const cards = useGameStore((state) => state.cards)
-  const columns = useGameStore((state) => state.columns)
-  const placements = useGameStore((state) => state.placements)
-  const details = useMemo(
-    () => getCardDetailModel({ cards, columns, placements, drag: null }, hoveredCardId),
-    [cards, columns, hoveredCardId, placements],
-  )
+type CardInspectorProps = {
+  onRightInsetChange?: (rightInset: number) => void
+}
 
-  if (!details) {
+export function CardInspector({ onRightInsetChange }: CardInspectorProps) {
+  const panelRef = useRef<HTMLElement | null>(null)
+  const { cards, columns, placements, selectedCardId } = useGameStore(
+    useShallow((state) => ({
+      cards: state.cards,
+      columns: state.columns,
+      placements: state.placements,
+      selectedCardId: state.selectedCardId,
+    })),
+  )
+  const details = useMemo(
+    () => getCardDetailModel({ cards, columns, placements, drag: null }, selectedCardId),
+    [cards, columns, placements, selectedCardId],
+  )
+  const [visibleDetails, setVisibleDetails] = useState<CardDetailModel | null>(details)
+  const [isExiting, setIsExiting] = useState(false)
+
+  useEffect(() => {
+    if (details) {
+      setVisibleDetails(details)
+      setIsExiting(false)
+      return
+    }
+
+    if (!visibleDetails) {
+      return
+    }
+
+    setIsExiting(true)
+    const exitTimer = window.setTimeout(() => {
+      setVisibleDetails(null)
+      setIsExiting(false)
+    }, 280)
+
+    return () => {
+      window.clearTimeout(exitTimer)
+    }
+  }, [details, visibleDetails])
+
+  useLayoutEffect(() => {
+    if (!visibleDetails || isExiting) {
+      onRightInsetChange?.(0)
+      return
+    }
+
+    const panel = panelRef.current
+
+    if (!panel) {
+      return
+    }
+
+    let frame = 0
+
+    const measure = () => {
+      const rect = panel.getBoundingClientRect()
+      const isBottomSheet = rect.left <= 16 && rect.width >= window.innerWidth * 0.78
+      const rightInset = isBottomSheet ? 0 : Math.max(0, window.innerWidth - rect.left + 28)
+
+      onRightInsetChange?.(rightInset)
+    }
+    const scheduleMeasure = () => {
+      window.cancelAnimationFrame(frame)
+      frame = window.requestAnimationFrame(measure)
+    }
+    const resizeObserver = new ResizeObserver(scheduleMeasure)
+
+    resizeObserver.observe(panel)
+    window.addEventListener('resize', scheduleMeasure)
+    scheduleMeasure()
+
+    return () => {
+      window.cancelAnimationFrame(frame)
+      resizeObserver.disconnect()
+      window.removeEventListener('resize', scheduleMeasure)
+    }
+  }, [isExiting, onRightInsetChange, visibleDetails])
+
+  if (!visibleDetails) {
     return null
   }
 
-  const accent = colorToCss(details.accent)
+  const accent = colorToCss(visibleDetails.accent)
+  const motionClass = isExiting ? 'motion-spring-slide-right' : 'motion-spring-slide-left'
 
   return (
-    <aside className="card-inspector" aria-label="Card details">
-      <header className="card-inspector__header">
-        <div className="card-inspector__meta">
-          <span className="card-inspector__case" aria-hidden="true" />
-          <span>{details.code}</span>
-          <span>·</span>
-          <span>{details.categoryLabel}</span>
-        </div>
-        <div className="card-inspector__signal" aria-hidden="true">
-          <span style={{ background: accent }} />
-          <span style={{ background: accent }} />
-          <span style={{ background: accent }} />
-        </div>
-      </header>
+    <aside ref={panelRef} className={`card-inspector ${motionClass}`} aria-label="Card details">
+      <div className="card-inspector__tab">{visibleDetails.code}</div>
+      <div className="card-inspector__signal" aria-hidden="true">
+        <span style={{ background: accent }} />
+        <span style={{ background: accent }} />
+        <span style={{ background: accent }} />
+      </div>
 
-      <h2>{details.title}</h2>
+      <h2>{visibleDetails.title}</h2>
 
-      <section className="card-inspector__metrics">
-        {details.metrics.map((metric) => (
+      <section className="card-inspector__metrics card-inspector__block">
+        {visibleDetails.metrics.map((metric) => (
           <Metric key={metric.label} metric={metric} />
         ))}
       </section>
 
-      <section className="card-inspector__risk">
+      <section className="card-inspector__risk card-inspector__block">
         <div>
-          <h3>{details.risk.title}</h3>
-          <span>{details.risk.caption}</span>
+          <h3>{visibleDetails.risk.title}</h3>
+          <span>{visibleDetails.risk.caption}</span>
         </div>
         <div className="card-inspector__chips">
-          {details.risk.reasons.map((reason) => (
+          {visibleDetails.risk.reasons.map((reason) => (
             <span key={reason}>{reason}</span>
           ))}
         </div>
@@ -68,8 +134,8 @@ export function CardInspector() {
 
       <section className="card-inspector__tasks">
         <h3>ПОДЗАДАЧИ</h3>
-        {details.tasks.map((task) => (
-          <div className="card-inspector__task" data-completed={task.completed} key={task.id}>
+        {visibleDetails.tasks.map((task) => (
+          <div className="card-inspector__task motion-spring-pop" data-completed={task.completed} key={task.id}>
             <span className="card-inspector__checkbox">{task.completed ? '✓' : '□'}</span>
             <strong>{task.title}</strong>
             <small>{task.typeLabel}</small>

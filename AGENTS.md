@@ -19,6 +19,7 @@ Stacksy is a React + TypeScript + PixiJS + Zustand prototype for a tabletop card
 - `src/engine/render/*` owns Pixi drawing and scene lifecycle.
 - `src/engine/interaction/*` owns hit testing and drop validation.
 - `src/engine/animation/*` owns GSAP and per-frame card motion.
+- `src/styles/motion.css` owns reusable React HUD spring/pop animation primitives.
 
 Do not put game rules in Pixi render code. Do not put Pixi objects in the Zustand store. Do not put layout math in React components.
 
@@ -35,6 +36,8 @@ Canonical sizes and colors live in `src/engine/model/gameConstants.ts`. Change c
 Idle cards are drawn in board perspective. Held cards are drawn as screen-space rectangular cards and must remain above all other cards.
 
 HUD components such as the card inspector are React overlays. They should not affect desk width/depth or Pixi layout.
+
+Use shared motion classes from `src/styles/motion.css` for game-like HUD entrance/pop effects before adding component-local keyframes.
 
 ## Before Finishing
 

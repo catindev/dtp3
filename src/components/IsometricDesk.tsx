@@ -1,9 +1,14 @@
-import { useEffect, useRef } from 'react'
-import { createDeskScene } from '../engine/render/createDeskScene'
+import { useCallback, useEffect, useRef } from 'react'
+import { createDeskScene, type DeskSceneController } from '../engine/render/createDeskScene'
 import { CardInspector } from './card-inspector'
 
 export function IsometricDesk() {
   const hostRef = useRef<HTMLDivElement | null>(null)
+  const sceneRef = useRef<DeskSceneController | null>(null)
+
+  const handleInspectorRightInsetChange = useCallback((rightInset: number) => {
+    sceneRef.current?.setRightHudInset(rightInset)
+  }, [])
 
   useEffect(() => {
     const host = hostRef.current
@@ -17,7 +22,10 @@ export function IsometricDesk() {
       initialZoom: 1,
     })
 
+    sceneRef.current = scene
+
     return () => {
+      sceneRef.current = null
       scene.destroy()
     }
   }, [])
@@ -25,7 +33,7 @@ export function IsometricDesk() {
   return (
     <div className="desk-frame">
       <div ref={hostRef} className="desk-canvas" aria-label="Stacksy board concept" />
-      <CardInspector />
+      <CardInspector onRightInsetChange={handleInspectorRightInsetChange} />
     </div>
   )
 }

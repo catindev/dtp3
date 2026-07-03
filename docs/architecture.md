@@ -6,12 +6,13 @@ The prototype is split into engine layers so the board can evolve into a game-li
 
 - React: `src/components`
   - `IsometricDesk.tsx` mounts the Pixi scene and places screen-space overlays.
-  - `card-inspector/*` renders hovered-card details as a HUD, not as board geometry.
+  - `card-inspector/*` renders selected-card details as a HUD, not as board geometry.
+  - HUD overlays can report occupied screen insets to the scene controller; the Pixi desk may react with camera offset, but HUD size must not become board geometry.
   - React does not know placement rules or projection math.
 
 - Store: `src/store/gameStore.ts`
   - Holds cards, columns, placements, and drag state.
-  - Holds UI-facing state that is derived from engine interaction, such as `hoveredCardId`.
+  - Holds UI-facing state that is derived from engine interaction, such as `selectedCardId`.
   - Exposes actions for drag lifecycle and card movement.
 
 - Model: `src/engine/model`
@@ -49,6 +50,10 @@ The prototype is split into engine layers so the board can evolve into a game-li
   - Per-frame physical drag response.
   - Hover/held visual state tweens for cards.
 
+- UI Motion: `src/styles/motion.css`
+  - Reusable CSS spring primitives for React HUD and interface elements.
+  - Prefer these classes for cartoon UI entrance/pop effects before adding one-off component keyframes.
+
 ## Dependency Direction
 
 React can depend on render scene APIs. Render can depend on layout, model, interaction, animation, and store. Model must stay independent from Pixi, React, and GSAP.
@@ -74,3 +79,5 @@ flowchart LR
 ## Current Composition
 
 The right-hand card inspector is a React HUD overlay. It must not be included in `getDeskWidth`, `deskPolygon`, `workspacePolygon`, or any Pixi board layout. If a future feature needs a real object on the tabletop, model it as board geometry separately from HUD components.
+
+When the inspector is visible on wide screens, it reports its right-side inset to `createDeskScene`. The scene applies a bounded spring camera shift so the board yields space to the HUD without changing board rules, slot geometry, or card placements.

@@ -19,6 +19,7 @@ Use this checklist when starting a new chat or adding a feature.
 - Drag physics or GSAP landing: `src/engine/animation/cardMotion.ts`.
 - Card hover/held highlight timing: `src/engine/animation/cardMotion.ts`.
 - Hit testing or allowed drop areas: `src/engine/interaction/hitTest.ts`.
+- Reusable React HUD spring/popup motion: `src/styles/motion.css`.
 
 ## 2. Keep Rules Testable
 
@@ -43,7 +44,8 @@ For drag changes, manually check:
 - accepted drop lands into a slot;
 - rejected drop returns to the source slot;
 - zoom still works within configured min/max.
-- hovered-card inspector appears without changing desk geometry.
+- selected-card inspector appears without changing desk geometry.
+- wide HUD overlays can shift the scene without moving cards into invalid slots.
 
 ## 5. Verify
 

@@ -56,7 +56,7 @@ const WORKSPACE_FIT_MARGIN = {
   left: 52,
 } as const
 
-const getPolygonBounds = (polygon: Polygon): Bounds => ({
+export const getPolygonBounds = (polygon: Polygon): Bounds => ({
   minX: Math.min(...polygon.map((point) => point.x)),
   maxX: Math.max(...polygon.map((point) => point.x)),
   minY: Math.min(...polygon.map((point) => point.y)),
