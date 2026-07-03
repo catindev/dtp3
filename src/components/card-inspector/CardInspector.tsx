@@ -1,7 +1,8 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import { useShallow } from 'zustand/react/shallow'
 import { useGameStore } from '../../store/gameStore'
-import { getCardDetailModel, type CardDetailMetric, type CardDetailModel } from '../../engine/model/cardDetails'
+import { getCardDetailModel, type CardDetailMetric } from '../../engine/model/cardDetails'
 import './CardInspector.css'
 
 const colorToCss = (color: number) => `#${color.toString(16).padStart(6, '0')}`
@@ -15,52 +16,38 @@ function Metric({ metric }: { metric: CardDetailMetric }) {
   )
 }
 
-type CardInspectorProps = {
-  onRightInsetChange?: (rightInset: number) => void
-}
+const getMotionStyle = (sourceRect: { x: number; y: number; width: number; height: number }, target: DOMRect) =>
+  ({
+    '--from-dx': `${sourceRect.x + sourceRect.width / 2 - window.innerWidth / 2}px`,
+    '--from-dy': `${sourceRect.y + sourceRect.height / 2 - window.innerHeight / 2}px`,
+    '--from-scale-x': `${sourceRect.width / target.width}`,
+    '--from-scale-y': `${sourceRect.height / target.height}`,
+  }) as CSSProperties
 
-export function CardInspector({ onRightInsetChange }: CardInspectorProps) {
+export function CardInspector() {
   const panelRef = useRef<HTMLElement | null>(null)
-  const { cards, columns, placements, inspectedCardId } = useGameStore(
+  const { cards, columns, placements, inspector, requestCloseCardInspector, finishCloseCardInspector } = useGameStore(
     useShallow((state) => ({
       cards: state.cards,
       columns: state.columns,
       placements: state.placements,
-      inspectedCardId: state.inspectedCardId,
+      inspector: state.inspector,
+      requestCloseCardInspector: state.requestCloseCardInspector,
+      finishCloseCardInspector: state.finishCloseCardInspector,
     })),
   )
   const details = useMemo(
-    () => getCardDetailModel({ cards, columns, placements, drag: null }, inspectedCardId),
-    [cards, columns, inspectedCardId, placements],
+    () => getCardDetailModel({ cards, columns, placements, drag: null }, inspector?.cardId ?? null),
+    [cards, columns, inspector?.cardId, placements],
   )
-  const [visibleDetails, setVisibleDetails] = useState<CardDetailModel | null>(details)
-  const [isExiting, setIsExiting] = useState(false)
+  const [motionStyle, setMotionStyle] = useState<CSSProperties | null>(null)
 
   useEffect(() => {
-    if (details) {
-      setVisibleDetails(details)
-      setIsExiting(false)
-      return
-    }
-
-    if (!visibleDetails) {
-      return
-    }
-
-    setIsExiting(true)
-    const exitTimer = window.setTimeout(() => {
-      setVisibleDetails(null)
-      setIsExiting(false)
-    }, 280)
-
-    return () => {
-      window.clearTimeout(exitTimer)
-    }
-  }, [details, visibleDetails])
+    setMotionStyle(null)
+  }, [inspector?.cardId, inspector?.sourceRect])
 
   useLayoutEffect(() => {
-    if (!visibleDetails || isExiting) {
-      onRightInsetChange?.(0)
+    if (!inspector || !details) {
       return
     }
 
@@ -73,19 +60,15 @@ export function CardInspector({ onRightInsetChange }: CardInspectorProps) {
     let frame = 0
 
     const measure = () => {
-      const isBottomSheet = window.matchMedia('(max-width: 760px)').matches
+      const target = panel.getBoundingClientRect()
 
-      if (isBottomSheet) {
-        onRightInsetChange?.(0)
+      if (target.width <= 0 || target.height <= 0) {
         return
       }
 
-      const styles = window.getComputedStyle(panel)
-      const rightOffset = Number.parseFloat(styles.right)
-      const rightInset = panel.offsetWidth + (Number.isFinite(rightOffset) ? rightOffset : 0) + 28
-
-      onRightInsetChange?.(rightInset)
+      setMotionStyle(getMotionStyle(inspector.sourceRect, target))
     }
+
     const scheduleMeasure = () => {
       window.cancelAnimationFrame(frame)
       frame = window.requestAnimationFrame(measure)
@@ -101,54 +84,116 @@ export function CardInspector({ onRightInsetChange }: CardInspectorProps) {
       resizeObserver.disconnect()
       window.removeEventListener('resize', scheduleMeasure)
     }
-  }, [isExiting, onRightInsetChange, visibleDetails])
+  }, [details, inspector])
 
-  if (!visibleDetails) {
+  useEffect(() => {
+    if (!inspector) {
+      return
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        requestCloseCardInspector()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [inspector, requestCloseCardInspector])
+
+  useEffect(() => {
+    if (!inspector?.isClosing || motionStyle) {
+      return
+    }
+
+    const timeout = window.setTimeout(finishCloseCardInspector, 0)
+
+    return () => {
+      window.clearTimeout(timeout)
+    }
+  }, [finishCloseCardInspector, inspector?.isClosing, motionStyle])
+
+  if (!inspector || !details) {
     return null
   }
 
-  const accent = colorToCss(visibleDetails.accent)
-  const motionClass = isExiting ? 'motion-spring-slide-right' : 'motion-spring-slide-left'
+  const accent = colorToCss(details.accent)
+  const modalClass = inspector.isClosing ? 'card-inspector-modal is-closing' : 'card-inspector-modal'
+  const panelClass = [
+    'card-inspector',
+    motionStyle ? 'is-motion-ready' : 'is-preparing',
+    inspector.isClosing ? 'is-closing' : 'is-opening',
+  ].join(' ')
 
-  return (
-    <aside ref={panelRef} className={`card-inspector ${motionClass}`} aria-label="Card details">
-      <div className="card-inspector__tab">{visibleDetails.code}</div>
-      <div className="card-inspector__signal" aria-hidden="true">
-        <span style={{ background: accent }} />
-        <span style={{ background: accent }} />
-        <span style={{ background: accent }} />
-      </div>
-
-      <h2>{visibleDetails.title}</h2>
-
-      <section className="card-inspector__metrics card-inspector__block">
-        {visibleDetails.metrics.map((metric) => (
-          <Metric key={metric.label} metric={metric} />
-        ))}
-      </section>
-
-      <section className="card-inspector__risk card-inspector__block">
-        <div>
-          <h3>{visibleDetails.risk.title}</h3>
-          <span>{visibleDetails.risk.caption}</span>
-        </div>
-        <div className="card-inspector__chips">
-          {visibleDetails.risk.reasons.map((reason) => (
-            <span key={reason}>{reason}</span>
-          ))}
-        </div>
-      </section>
-
-      <section className="card-inspector__tasks">
-        <h3>ПОДЗАДАЧИ</h3>
-        {visibleDetails.tasks.map((task) => (
-          <div className="card-inspector__task motion-spring-pop" data-completed={task.completed} key={task.id}>
-            <span className="card-inspector__checkbox">{task.completed ? '✓' : '□'}</span>
-            <strong>{task.title}</strong>
-            <small>{task.typeLabel}</small>
+  return createPortal(
+    <div
+      className={modalClass}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          requestCloseCardInspector()
+        }
+      }}
+    >
+      <aside
+        ref={panelRef}
+        aria-label="Card details"
+        aria-modal="true"
+        className={panelClass}
+        onAnimationEnd={(event) => {
+          if (event.animationName === 'cardInspectorClose' && inspector.isClosing) {
+            finishCloseCardInspector()
+          }
+        }}
+        onMouseDown={(event) => {
+          event.stopPropagation()
+        }}
+        role="dialog"
+        style={motionStyle ?? undefined}
+      >
+        <div className="card-inspector__content">
+          <div className="card-inspector__tab">{details.code}</div>
+          <div className="card-inspector__signal" aria-hidden="true">
+            <span style={{ background: accent }} />
+            <span style={{ background: accent }} />
+            <span style={{ background: accent }} />
           </div>
-        ))}
-      </section>
-    </aside>
+
+          <h2>{details.title}</h2>
+
+          <section className="card-inspector__metrics card-inspector__block">
+            {details.metrics.map((metric) => (
+              <Metric key={metric.label} metric={metric} />
+            ))}
+          </section>
+
+          <section className="card-inspector__risk card-inspector__block">
+            <div>
+              <h3>{details.risk.title}</h3>
+              <span>{details.risk.caption}</span>
+            </div>
+            <div className="card-inspector__chips">
+              {details.risk.reasons.map((reason) => (
+                <span key={reason}>{reason}</span>
+              ))}
+            </div>
+          </section>
+
+          <section className="card-inspector__tasks">
+            <h3>ПОДЗАДАЧИ</h3>
+            {details.tasks.map((task) => (
+              <div className="card-inspector__task motion-spring-pop" data-completed={task.completed} key={task.id}>
+                <span className="card-inspector__checkbox">{task.completed ? '✓' : '□'}</span>
+                <strong>{task.title}</strong>
+                <small>{task.typeLabel}</small>
+              </div>
+            ))}
+          </section>
+        </div>
+      </aside>
+    </div>,
+    document.body,
   )
 }

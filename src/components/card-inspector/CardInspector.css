@@ -1,40 +1,91 @@
+.card-inspector-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background: rgba(51, 41, 27, 0.1);
+  backdrop-filter: blur(5px);
+  animation: cardInspectorBackdropIn 180ms ease-out both;
+  pointer-events: auto;
+}
+
+.card-inspector-modal.is-closing {
+  animation: cardInspectorBackdropOut 340ms ease-in both;
+}
+
 .card-inspector {
   --inspector-ink: #c9702a;
   --inspector-panel: rgb(243, 231, 210);
   --inspector-card: rgba(255, 253, 246, 0.82);
+  --from-dx: 0px;
+  --from-dy: 0px;
+  --from-scale-x: 0.32;
+  --from-scale-y: 0.18;
 
-  position: absolute;
-  right: clamp(22px, 5.6vw, 86px);
-  top: clamp(76px, 11svh, 104px);
-  z-index: 3;
-  width: clamp(360px, 31vw, 456px);
-  max-height: calc(100svh - 112px);
-  overflow: visible;
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  z-index: 41;
+  width: min(560px, calc(100vw - 56px));
+  max-height: min(720px, calc(100svh - 56px));
+  overflow: hidden;
   border: 4px solid var(--inspector-ink);
-  border-radius: 16px;
+  border-radius: 18px;
   color: #33291b;
   background: var(--inspector-panel);
   box-shadow:
     0 9px 0 rgba(201, 112, 42, 0.42),
-    0 18px 36px rgba(201, 112, 42, 0.18);
-  pointer-events: none;
+    0 20px 42px rgba(51, 41, 27, 0.16),
+    0 28px 70px rgba(201, 112, 42, 0.14);
+  pointer-events: auto;
+  transform: translate(-50%, -50%);
+  transform-origin: center;
+  will-change: transform, opacity;
+}
+
+.card-inspector.is-preparing {
+  opacity: 0;
+}
+
+.card-inspector.is-motion-ready.is-opening {
+  animation: cardInspectorOpen 560ms cubic-bezier(0.18, 1.18, 0.24, 1) both;
+}
+
+.card-inspector.is-motion-ready.is-closing {
+  animation: cardInspectorClose 380ms cubic-bezier(0.55, -0.08, 0.72, 0.24) both;
 }
 
 .card-inspector::after {
   content: "";
   position: absolute;
-  inset: auto 24px -14px;
-  height: 12px;
+  inset: auto 28px -16px;
+  height: 13px;
   border-radius: 999px;
   background: rgba(201, 112, 42, 0.2);
   filter: blur(4px);
   pointer-events: none;
 }
 
+.card-inspector__content {
+  position: relative;
+  max-height: inherit;
+  overflow: auto;
+  overscroll-behavior: contain;
+  opacity: 0;
+  transform: translateY(10px) scale(0.985);
+  animation: cardInspectorContentIn 220ms ease-out 260ms both;
+}
+
+.card-inspector.is-closing .card-inspector__content {
+  animation: cardInspectorContentOut 120ms ease-in both;
+}
+
 .card-inspector__tab {
   position: absolute;
-  top: -21px;
-  left: 28px;
+  top: 14px;
+  left: 24px;
   z-index: 1;
   border: 3px solid var(--inspector-ink);
   border-radius: 11px;
@@ -50,7 +101,7 @@
 
 .card-inspector__signal {
   position: absolute;
-  top: 22px;
+  top: 28px;
   right: 28px;
   z-index: 1;
   display: inline-flex;
@@ -76,10 +127,10 @@
 
 .card-inspector h2 {
   position: relative;
-  margin: 38px 28px 24px;
-  max-width: 20ch;
+  margin: 72px 28px 24px;
+  max-width: 19ch;
   color: #33291b;
-  font-size: clamp(24px, 2vw, 31px);
+  font-size: clamp(25px, 2.2vw, 34px);
   font-weight: 950;
   line-height: 1.02;
   letter-spacing: 0;
@@ -169,7 +220,7 @@
 }
 
 .card-inspector__risk div:first-child span {
-  max-width: 142px;
+  max-width: 170px;
   color: #8b6410;
   font-size: 10px;
   font-weight: 950;
@@ -268,17 +319,109 @@
   font-weight: 950;
 }
 
+@keyframes cardInspectorBackdropIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes cardInspectorBackdropOut {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes cardInspectorOpen {
+  0% {
+    opacity: 0.94;
+    border-radius: 10px;
+    transform: translate(calc(-50% + var(--from-dx)), calc(-50% + var(--from-dy)))
+      scale(var(--from-scale-x), var(--from-scale-y));
+  }
+
+  58% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.025, 0.985);
+  }
+
+  78% {
+    transform: translate(-50%, -50%) scale(0.992, 1.01);
+  }
+
+  100% {
+    opacity: 1;
+    border-radius: 18px;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes cardInspectorClose {
+  0% {
+    opacity: 1;
+    border-radius: 18px;
+    transform: translate(-50%, -50%) scale(1);
+  }
+
+  30% {
+    transform: translate(-50%, -50%) scale(0.985, 1.02);
+  }
+
+  100% {
+    opacity: 0.98;
+    border-radius: 10px;
+    transform: translate(calc(-50% + var(--from-dx)), calc(-50% + var(--from-dy)))
+      scale(var(--from-scale-x), var(--from-scale-y));
+  }
+}
+
+@keyframes cardInspectorContentIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes cardInspectorContentOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(4px) scale(0.99);
+  }
+}
+
 @media (max-width: 760px) {
+  .card-inspector-modal {
+    padding: 16px;
+  }
+
   .card-inspector {
-    right: 12px;
-    left: 12px;
-    top: auto;
-    bottom: 14px;
-    width: auto;
-    max-height: 48svh;
+    width: calc(100vw - 28px);
+    max-height: calc(100svh - 28px);
   }
 
   .card-inspector h2 {
     max-width: none;
+    margin-top: 70px;
+  }
+
+  .card-inspector__metrics {
+    grid-template-columns: 1fr;
   }
 }

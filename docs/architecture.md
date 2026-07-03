@@ -6,13 +6,13 @@ The prototype is split into engine layers so the board can evolve into a game-li
 
 - React: `src/components`
   - `IsometricDesk.tsx` mounts the Pixi scene and places screen-space overlays.
-  - `card-inspector/*` renders selected-card details as a HUD, not as board geometry.
-  - HUD overlays can report occupied screen insets to the scene controller; the Pixi desk may react with camera offset, but HUD size must not become board geometry.
+  - `card-inspector/*` renders selected-card details as modal screen-space UI, not as board geometry.
+  - Modal overlays can block tabletop input, but overlay size must not become board geometry.
   - React does not know placement rules or projection math.
 
 - Store: `src/store/gameStore.ts`
   - Holds cards, columns, placements, and drag state.
-  - Holds UI-facing state that is derived from engine interaction, such as `inspectedCardId`.
+  - Holds UI-facing state that is derived from engine interaction, such as the modal inspector card id, source rectangle, and closing phase.
   - Exposes actions for drag lifecycle and card movement.
 
 - Model: `src/engine/model`
@@ -20,7 +20,7 @@ The prototype is split into engine layers so the board can evolve into a game-li
   - `gameConstants.ts`: board geometry, card size, zoom bounds, colors.
   - `boardState.ts`: initial state.
   - `cardPresentation.ts`: labels, colors, codes, and risk summaries derived from card data.
-  - `cardDetails.ts`: pure card-detail view model used by the React HUD.
+  - `cardDetails.ts`: pure card-detail view model used by the React modal.
   - `placementRules.ts`: slot parsing, visible row count, free slot lookup, card moves.
 
 - Layout: `src/engine/layout`
@@ -35,7 +35,7 @@ The prototype is split into engine layers so the board can evolve into a game-li
   - `createDeskScene.ts`: Pixi lifecycle, pointer events, store subscription.
   - Executes effect plans from `src/engine/effects`; it should not decide row growth/shrink rules directly.
   - `sceneRowMotion.ts`: owns runtime row-growth/shrink animation state and removed-slot collapse effects.
-  - `sceneViewport.ts`: owns zoom, camera offset, HUD inset shift, and hover locks caused by layout shifts.
+  - `sceneViewport.ts`: owns zoom and camera offset.
   - `sceneEntities.ts`: syncs Pixi labels/card views with model state and destroys stale Pixi objects.
   - `sceneCardLayout.ts`: applies model placements to card rest poses and starts card hop motion when compacted slots move.
   - `cardMotionLoop.ts`: requestAnimationFrame loop for card dirty-checking and physical motion updates.
@@ -55,7 +55,7 @@ The prototype is split into engine layers so the board can evolve into a game-li
   - Hover/held visual state tweens for cards.
 
 - UI Motion: `src/styles/motion.css`
-  - Reusable CSS spring primitives for React HUD and interface elements.
+  - Reusable CSS spring primitives for React overlays and interface elements.
   - Prefer these classes for cartoon UI entrance/pop effects before adding one-off component keyframes.
 
 ## Dependency Direction
@@ -82,15 +82,15 @@ flowchart LR
 
 ## Current Composition
 
-The right-hand card inspector is a React HUD overlay. It must not be included in `getDeskWidth`, `deskPolygon`, `workspacePolygon`, or any Pixi board layout. If a future feature needs a real object on the tabletop, model it as board geometry separately from HUD components.
+The card inspector is a React modal overlay rendered through a portal to `document.body`. It must not be included in `getDeskWidth`, `deskPolygon`, `workspacePolygon`, or any Pixi board layout. If a future feature needs a real object on the tabletop, model it as board geometry separately from modal components.
 
-When the inspector is visible on wide screens, it reports its right-side inset to `createDeskScene`. The scene applies a bounded spring camera shift so the board yields space to the HUD without changing board rules, slot geometry, or card placements.
+When the player clicks a card info icon, the scene stores the card id plus its screen-space source rectangle. React uses that source rectangle to animate a centered modal from the card. While the modal is active, the original Pixi card is hidden and the backdrop blocks tabletop input. When the modal closes, the store clears the inspector state and the scene plays a small landing slap on the original card.
 
 ## Refactor Boundaries
 
 Keep `createDeskScene.ts` as an orchestrator. It can wire browser events, store subscriptions, and render passes, but new persistent runtime state should usually go into one of the focused scene modules.
 
-- Camera, zoom, HUD overlap, and layout-shift hover locks: `sceneViewport.ts`.
+- Camera and zoom runtime state: `sceneViewport.ts`.
 - Slot-count animation, delayed shrink, and removed-slot collapse runtime state: `sceneRowMotion.ts`.
 - Pixi object creation/destruction for cards and labels: `sceneEntities.ts`.
 - Card rest-position synchronization and compacted-slot hop animation: `sceneCardLayout.ts`.

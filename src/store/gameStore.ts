@@ -3,9 +3,24 @@ import { initialBoardState } from '../engine/model/boardState'
 import { getColumnIdForCard, moveCardToColumn, moveCardToSlot } from '../engine/model/placementRules'
 import type { BoardState, CardId, ColumnId, SlotId } from '../engine/model/boardTypes'
 
+export type InspectorSourceRect = {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export type CardInspectorState = {
+  cardId: CardId
+  sourceRect: InspectorSourceRect
+  isClosing: boolean
+}
+
 type GameStore = BoardState & {
-  inspectedCardId: CardId | null
-  setInspectedCardId: (cardId: CardId | null) => void
+  inspector: CardInspectorState | null
+  openCardInspector: (cardId: CardId, sourceRect: InspectorSourceRect) => void
+  requestCloseCardInspector: () => void
+  finishCloseCardInspector: () => void
   beginDrag: (cardId: CardId, sourceSlotId: SlotId) => void
   endDrag: () => void
   moveCardToColumn: (cardId: CardId, targetColumnId: ColumnId) => void
@@ -14,9 +29,32 @@ type GameStore = BoardState & {
 
 export const useGameStore = create<GameStore>((set, get) => ({
   ...initialBoardState,
-  inspectedCardId: null,
-  setInspectedCardId: (cardId) => {
-    set({ inspectedCardId: cardId })
+  inspector: null,
+  openCardInspector: (cardId, sourceRect) => {
+    set({
+      inspector: {
+        cardId,
+        sourceRect,
+        isClosing: false,
+      },
+    })
+  },
+  requestCloseCardInspector: () => {
+    set((state) => {
+      if (!state.inspector || state.inspector.isClosing) {
+        return state
+      }
+
+      return {
+        inspector: {
+          ...state.inspector,
+          isClosing: true,
+        },
+      }
+    })
+  },
+  finishCloseCardInspector: () => {
+    set({ inspector: null })
   },
   beginDrag: (cardId, sourceSlotId) => {
     set({

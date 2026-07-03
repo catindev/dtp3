@@ -8,11 +8,11 @@ Use this checklist when starting a new chat or adding a feature.
 - State transition side effects such as slot collapse or board growth order: `src/engine/effects`.
 - New state or action: `src/store/gameStore.ts`.
 - New card data fields: `src/engine/model/boardTypes.ts` and `src/engine/model/boardState.ts`.
-- Card labels, colors, codes, risk text, or HUD detail derivation: `src/engine/model/cardPresentation.ts` and `src/engine/model/cardDetails.ts`.
+- Card labels, colors, codes, risk text, or modal detail derivation: `src/engine/model/cardPresentation.ts` and `src/engine/model/cardDetails.ts`.
 - Board/card size or color: `src/engine/model/gameConstants.ts`.
 - Projection or slot geometry: `src/engine/layout`.
 - Pixi scene orchestration, event wiring, and store subscription: `src/engine/render/createDeskScene.ts`.
-- Runtime camera/zoom/HUD overlap state: `src/engine/render/sceneViewport.ts`.
+- Runtime camera/zoom state: `src/engine/render/sceneViewport.ts`.
 - Runtime slot-row growth/shrink and removed-slot collapse execution: `src/engine/render/sceneRowMotion.ts`.
 - Pixi card/column-label sync and cleanup: `src/engine/render/sceneEntities.ts`.
 - Card rest-position sync and compacted-slot hop behavior: `src/engine/render/sceneCardLayout.ts`.
@@ -23,7 +23,7 @@ Use this checklist when starting a new chat or adding a feature.
 - Drag physics or GSAP landing: `src/engine/animation/cardMotion.ts`.
 - Card hover/held highlight timing: `src/engine/animation/cardMotion.ts`.
 - Hit testing or allowed drop areas: `src/engine/interaction/hitTest.ts`.
-- Reusable React HUD spring/popup motion: `src/styles/motion.css`.
+- Reusable React overlay spring/popup motion: `src/styles/motion.css`.
 
 ## 2. Keep Rules Testable
 
@@ -48,8 +48,7 @@ For drag changes, manually check:
 - accepted drop lands into a slot;
 - rejected drop returns to the source slot;
 - zoom still works within configured min/max.
-- selected-card inspector appears without changing desk geometry.
-- wide HUD overlays can shift the scene without moving cards into invalid slots.
+- info-icon inspector opens as a modal from the card, blocks the desk, and closes back to the source card.
 
 ## 5. Verify
 

@@ -12,6 +12,7 @@ import {
   clampCameraOffsetToLayout,
   createLayout,
   fitCameraOffsetToWorkspace,
+  getPolygonBounds,
   getWorkspaceZoomLimit,
   type SceneLayout,
 } from '../layout/boardLayout'
@@ -24,14 +25,7 @@ import { clamp } from '../math/easing'
 import { drawBoard, drawColumns } from './boardRenderer'
 import { drawCard, type CardView } from './cardView'
 import { createCardMotionLoop } from './cardMotionLoop'
-import {
-  createSceneViewport,
-  destroySceneViewport,
-  getTargetHudShiftX,
-  isHoverLockedForLayoutShift,
-  setHudShiftTarget,
-  setRightHudInset as setViewportRightHudInset,
-} from './sceneViewport'
+import { createSceneViewport } from './sceneViewport'
 import { createSceneRowMotion } from './sceneRowMotion'
 import {
   destroyCardViews,
@@ -43,7 +37,6 @@ import { relayoutCardViews } from './sceneCardLayout'
 
 export type DeskSceneController = {
   setZoom: (nextZoom: number) => void
-  setRightHudInset: (rightInset: number) => void
   destroy: () => void
 }
 
@@ -102,7 +95,7 @@ export const createDeskScene = ({
   let hoverColumnId: ColumnId | null = null
   let hoverSlotId: SlotId | null = null
   let hoveredCard: CardView | null = null
-  let inspectedCard: CardView | null = null
+  let modalCardId: CardId | null = initialState.inspector?.cardId ?? null
   let activeCard: CardView | null = null
   let activePointerId: number | null = null
   let activePan: CameraPan | null = null
@@ -141,6 +134,20 @@ export const createDeskScene = ({
     }
   }
 
+  const isInspectorModalOpen = () => state().inspector !== null
+
+  const getCardSourceRect = (card: CardView) => {
+    const bounds = getPolygonBounds(card.hitPolygon)
+    const hostBounds = host.getBoundingClientRect()
+
+    return {
+      x: hostBounds.left + bounds.minX,
+      y: hostBounds.top + bounds.minY,
+      width: bounds.maxX - bounds.minX,
+      height: bounds.maxY - bounds.minY,
+    }
+  }
+
   const syncColumnLabels = () => {
     syncColumnLabelRegistry(labels, boardLayer, state().columns)
   }
@@ -153,10 +160,8 @@ export const createDeskScene = ({
           hoveredCard = null
           host.classList.remove('is-hovering-card')
         }
-        if (inspectedCard?.id === card.id) {
-          setCardHover(card, false)
-          inspectedCard = null
-          useGameStore.getState().setInspectedCardId(null)
+        if (state().inspector?.cardId === card.id) {
+          useGameStore.getState().finishCloseCardInspector()
         }
         cardMotionLoop.forget(card.id)
       },
@@ -176,6 +181,7 @@ export const createDeskScene = ({
     })
     cardViews.forEach((card) => {
       drawCard(card, layout)
+      card.root.visible = currentState.inspector?.cardId !== card.id
       cardMotionLoop.remember(card)
     })
     renderScene()
@@ -186,37 +192,17 @@ export const createDeskScene = ({
       return
     }
 
-    if (hoveredCard && hoveredCard !== inspectedCard) {
+    if (hoveredCard) {
       setCardHover(hoveredCard, false)
     }
 
     hoveredCard = card
 
-    if (hoveredCard && hoveredCard !== inspectedCard) {
+    if (hoveredCard) {
       setCardHover(hoveredCard, true)
     }
 
     host.classList.toggle('is-hovering-card', Boolean(hoveredCard))
-    renderScene()
-    cardMotionLoop.start()
-  }
-
-  const setInspectedCard = (card: CardView | null) => {
-    if (inspectedCard === card) {
-      return
-    }
-
-    if (inspectedCard && inspectedCard !== hoveredCard) {
-      setCardHover(inspectedCard, false)
-    }
-
-    inspectedCard = card
-
-    if (inspectedCard) {
-      setCardHover(inspectedCard, true)
-    }
-
-    useGameStore.getState().setInspectedCardId(inspectedCard?.id ?? null)
     renderScene()
     cardMotionLoop.start()
   }
@@ -268,15 +254,7 @@ export const createDeskScene = ({
       }
     }
 
-    setHudShiftTarget(
-      viewport,
-      activePan ? viewport.hudMotion.x : getTargetHudShiftX(baseLayout, viewport.rightHudInset),
-      syncAndRedraw,
-    )
-    layout = makeLayout({
-      x: viewport.cameraOffset.x + viewport.hudMotion.x,
-      y: viewport.cameraOffset.y,
-    })
+    layout = makeLayout(viewport.cameraOffset)
 
     host.classList.toggle('is-pan-enabled', canPanLayout(layout))
   }
@@ -288,14 +266,22 @@ export const createDeskScene = ({
     redrawScene()
   }
 
-  const setRightHudInset = (nextRightHudInset: number) => {
-    if (setViewportRightHudInset(viewport, nextRightHudInset)) {
-      syncAndRedraw()
-    }
-  }
-
   const syncStoreState = () => {
     rowMotion.syncToRows(getColumnSlotCounts(state()))
+
+    const nextModalCardId = state().inspector?.cardId ?? null
+
+    if (modalCardId && !nextModalCardId) {
+      const card = cardViews.get(modalCardId)
+
+      if (card) {
+        card.root.visible = true
+        settleCard(card, layout, null)
+        cardMotionLoop.start()
+      }
+    }
+
+    modalCardId = nextModalCardId
   }
 
   const setZoom = (nextZoom: number) => {
@@ -335,6 +321,11 @@ export const createDeskScene = ({
   }
 
   const handleWheel = (event: WheelEvent) => {
+    if (isInspectorModalOpen()) {
+      event.preventDefault()
+      return
+    }
+
     const factor = Math.exp(-event.deltaY * 0.001)
 
     setZoom(viewport.zoom * factor)
@@ -366,12 +357,17 @@ export const createDeskScene = ({
       return
     }
 
+    if (isInspectorModalOpen()) {
+      event.preventDefault()
+      return
+    }
+
     const point = localPoint(event)
     const infoCard = hitCardInfoIcon(cardViews.values(), point)
 
     if (infoCard) {
-      setInspectedCard(infoCard)
-      setHoveredCard(infoCard)
+      setHoveredCard(null)
+      useGameStore.getState().openCardInspector(infoCard.id, getCardSourceRect(infoCard))
       event.preventDefault()
       return
     }
@@ -379,7 +375,6 @@ export const createDeskScene = ({
     const card = hitCard(cardViews.values(), point)
 
     if (!card) {
-      setInspectedCard(null)
       setHoveredCard(null)
 
       if (!canPanLayout(layout)) {
@@ -397,7 +392,6 @@ export const createDeskScene = ({
       return
     }
 
-    setInspectedCard(null)
     activeCard = card
     activePointerId = event.pointerId
     setHoveredCard(card)
@@ -411,6 +405,10 @@ export const createDeskScene = ({
   const handlePointerMove = (event: PointerEvent) => {
     const point = localPoint(event)
 
+    if (isInspectorModalOpen()) {
+      return
+    }
+
     if (activePan?.pointerId === event.pointerId) {
       viewport.cameraOffset = {
         x: activePan.startOffset.x + point.x - activePan.startPoint.x,
@@ -423,10 +421,6 @@ export const createDeskScene = ({
 
     if (activePointerId !== event.pointerId || !activeCard) {
       const nextHoveredCard = hitCard(cardViews.values(), point)
-
-      if (!nextHoveredCard && hoveredCard && isHoverLockedForLayoutShift(viewport)) {
-        return
-      }
 
       setHoveredCard(nextHoveredCard)
       return
@@ -474,7 +468,6 @@ export const createDeskScene = ({
       useGameStore.getState().moveCardToColumn(card.id, targetColumnId)
     }
 
-    setInspectedCard(null)
     setHoveredCard(null)
     useGameStore.getState().endDrag()
     hoverColumnId = null
@@ -552,12 +545,10 @@ export const createDeskScene = ({
 
   return {
     setZoom,
-    setRightHudInset,
     destroy: () => {
       disposed = true
       unsubscribe()
       resizeObserver.disconnect()
-      destroySceneViewport(viewport)
       rowMotion.destroy()
       cardMotionLoop.stop()
       host.removeEventListener('pointerdown', handlePointerDown)
@@ -569,7 +560,7 @@ export const createDeskScene = ({
       host.classList.remove('is-dragging', 'is-hovering-card', 'is-panning', 'is-pan-enabled')
       destroyCardViews(cardViews)
       destroyColumnLabels(labels)
-      useGameStore.getState().setInspectedCardId(null)
+      useGameStore.getState().finishCloseCardInspector()
 
       if (app) {
         app.destroy(true, { children: true })
