@@ -4,6 +4,8 @@ import { getColumnIdForCard, moveCardToColumn, moveCardToSlot } from '../engine/
 import type { BoardState, CardId, ColumnId, SlotId } from '../engine/model/boardTypes'
 
 type GameStore = BoardState & {
+  hoveredCardId: CardId | null
+  setHoveredCardId: (cardId: CardId | null) => void
   beginDrag: (cardId: CardId, sourceSlotId: SlotId) => void
   endDrag: () => void
   moveCardToColumn: (cardId: CardId, targetColumnId: ColumnId) => void
@@ -12,6 +14,10 @@ type GameStore = BoardState & {
 
 export const useGameStore = create<GameStore>((set, get) => ({
   ...initialBoardState,
+  hoveredCardId: null,
+  setHoveredCardId: (cardId) => {
+    set({ hoveredCardId: cardId })
+  },
   beginDrag: (cardId, sourceSlotId) => {
     set({
       drag: {

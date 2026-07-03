@@ -4,19 +4,22 @@ The prototype is split into engine layers so the board can evolve into a game-li
 
 ## Layers
 
-- React: `src/components/IsometricDesk.tsx`
-  - Mounts the Pixi scene.
-  - Displays zoom controls.
-  - Does not know placement rules or projection math.
+- React: `src/components`
+  - `IsometricDesk.tsx` mounts the Pixi scene and places screen-space overlays.
+  - `card-inspector/*` renders hovered-card details as a HUD, not as board geometry.
+  - React does not know placement rules or projection math.
 
 - Store: `src/store/gameStore.ts`
   - Holds cards, columns, placements, and drag state.
+  - Holds UI-facing state that is derived from engine interaction, such as `hoveredCardId`.
   - Exposes actions for drag lifecycle and card movement.
 
 - Model: `src/engine/model`
   - `boardTypes.ts`: stable domain types.
   - `gameConstants.ts`: board geometry, card size, zoom bounds, colors.
   - `boardState.ts`: initial state.
+  - `cardPresentation.ts`: labels, colors, codes, and risk summaries derived from card data.
+  - `cardDetails.ts`: pure card-detail view model used by the React HUD.
   - `placementRules.ts`: slot parsing, visible row count, free slot lookup, card moves.
 
 - Layout: `src/engine/layout`
@@ -30,6 +33,7 @@ The prototype is split into engine layers so the board can evolve into a game-li
 - Render: `src/engine/render`
   - `createDeskScene.ts`: Pixi lifecycle, pointer events, store subscription.
   - Executes effect plans from `src/engine/effects`; it should not decide row growth/shrink rules directly.
+  - `cardMotionLoop.ts`: requestAnimationFrame loop for card dirty-checking and physical motion updates.
   - `boardRenderer.ts`: desk, columns, labels, empty slots.
   - `cardView.ts`: card graphics, card text, shadows, hit polygons.
   - `cardTypography.ts`: title line fitting and two-line ellipsis for card text.
@@ -52,6 +56,7 @@ React can depend on render scene APIs. Render can depend on layout, model, inter
 ```mermaid
 flowchart LR
   React["React component"] --> Scene["createDeskScene"]
+  React --> Details["cardDetails"]
   Scene --> Store["Zustand store"]
   Scene --> Render["Render helpers"]
   Scene --> Interaction["Interaction helpers"]
@@ -62,5 +67,10 @@ flowchart LR
   Effects --> Model
   Layout --> Model["Model/constants"]
   Store --> Model
+  Details --> Model
   Animation --> Render
 ```
+
+## Current Composition
+
+The right-hand card inspector is a React HUD overlay. It must not be included in `getDeskWidth`, `deskPolygon`, `workspacePolygon`, or any Pixi board layout. If a future feature needs a real object on the tabletop, model it as board geometry separately from HUD components.

@@ -6,7 +6,6 @@ export const BOARD_GEOMETRY = {
   deskPaddingV: 58,
   columnWidth: 258,
   columnGap: 28,
-  inspectorSectionWidthFactor: 1.5,
   columnLabelGapV: 32,
   columnBottomPaddingV: 58,
   cardStartV: 24,

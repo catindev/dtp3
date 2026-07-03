@@ -1,5 +1,5 @@
 import { Graphics, Text } from 'pixi.js'
-import { COLUMN_IDS, type BoardState, type CardId, type ColumnId, type SlotId } from '../model/boardTypes'
+import { COLUMN_IDS, getCardIds, type BoardState, type ColumnId, type SlotId } from '../model/boardTypes'
 import { BOARD_GEOMETRY, CARD_SIZE, TOKENS } from '../model/gameConstants'
 import { getColumnU, getSlotPolygon, type SceneLayout } from '../layout/boardLayout'
 import { projectWithContext } from '../layout/projection'
@@ -73,17 +73,6 @@ export const drawColumns = (
   graphics.clear()
   const visualPlacements = getCompactPlacements(state)
 
-  drawRoundedPolygon(
-    graphics,
-    layout.inspectorSectionPolygon,
-    TOKENS.column.radius * layout.scale,
-    TOKENS.column.fill,
-    1,
-    TOKENS.column.border,
-    1,
-    1.5 * layout.scale,
-  )
-
   state.columns.forEach((column) => {
     const columnIndex = COLUMN_IDS.indexOf(column.id)
     const polygon = layout.columnPolygons[column.id]
@@ -91,7 +80,7 @@ export const drawColumns = (
     const fill = isHovered ? TOKENS.column.hoverFill : TOKENS.column.fill
     const stroke = isHovered ? TOKENS.column.hoverBorder : TOKENS.column.border
     const occupiedRows = new Set<number>(
-      (Object.keys(visualPlacements) as CardId[])
+      getCardIds(state.cards)
         .filter((cardId) => visualPlacements[cardId])
         .filter((cardId) => parseSlotId(visualPlacements[cardId]!).columnId === column.id)
         .map((cardId) => parseSlotId(visualPlacements[cardId]!).rowIndex),

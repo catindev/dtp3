@@ -1,4 +1,4 @@
-import { COLUMN_IDS, type BoardState, type CardId, type ColumnId, type SlotId } from './boardTypes'
+import { COLUMN_IDS, getCardIds, type BoardState, type CardId, type ColumnId, type SlotId } from './boardTypes'
 
 export const makeSlotId = (columnId: ColumnId, rowIndex: number): SlotId => `${columnId}:${rowIndex}`
 
@@ -17,7 +17,7 @@ export const getColumnIdForCard = (state: BoardState, cardId: CardId) =>
   parseSlotId(getSlotIdForCard(state, cardId)).columnId
 
 export const getCardsInColumn = (state: BoardState, columnId: ColumnId, ignoredCardId?: CardId) =>
-  (Object.keys(state.cards) as CardId[])
+  getCardIds(state.cards)
     .filter((cardId) => cardId !== ignoredCardId && parseSlotId(state.placements[cardId]).columnId === columnId)
     .sort((a, b) => parseSlotId(state.placements[a]).rowIndex - parseSlotId(state.placements[b]).rowIndex)
 
@@ -36,9 +36,7 @@ export const getVisibleRowCount = (state: BoardState) => {
 }
 
 export const isSlotOccupied = (state: BoardState, slotId: SlotId, ignoredCardId?: CardId) =>
-  (Object.keys(state.placements) as CardId[]).some(
-    (cardId) => cardId !== ignoredCardId && state.placements[cardId] === slotId,
-  )
+  getCardIds(state.cards).some((cardId) => cardId !== ignoredCardId && state.placements[cardId] === slotId)
 
 export const getFirstFreeSlot = (state: BoardState, columnId: ColumnId, ignoredCardId?: CardId) => {
   return makeSlotId(columnId, getCardsInColumn(state, columnId, ignoredCardId).length)

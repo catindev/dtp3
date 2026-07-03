@@ -8,6 +8,7 @@ import type { Polygon, Vec2 } from '../layout/projection'
 import { applySurfaceTextTransform } from './textTransform'
 import { CARD_TITLE_STYLE, formatCardTitle } from './cardTypography'
 import { drawRoundedPolygon, offsetPolygon, scalePolygon, spreadPolygon } from './pixiPrimitives'
+import { getCardAccent, getCardKicker } from '../model/cardPresentation'
 
 export type CardPhase = 'idle' | 'held' | 'landing'
 
@@ -134,7 +135,7 @@ export const createCardView = (card: BoardCard) => {
     style: CARD_TITLE_STYLE,
   })
   const kicker = new Text({
-    text: card.kicker.toUpperCase(),
+    text: getCardKicker(card),
     style: {
       fill: TOKENS.text.secondary,
       fontFamily: 'Onest Variable, ui-sans-serif, system-ui, sans-serif',
@@ -302,7 +303,7 @@ export const drawCard = (card: CardView, layout: SceneLayout) => {
     card.accent,
     accentCorners,
     3 * layout.scale,
-    card.data.accent,
+    getCardAccent(card.data),
     0.94,
   )
 

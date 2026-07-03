@@ -1,6 +1,5 @@
 import { IsometricDesk } from './components/IsometricDesk'
 import { AbstractBackground } from './components/AbstractBackground'
-import { FpsCounter } from './components/FpsCounter'
 import logotypeUrl from './assets/logotype.svg'
 import './App.css'
 
@@ -12,9 +11,6 @@ function App() {
         <h1 className="brand-logo">
           <img src={logotypeUrl} alt="Stacksy" />
         </h1>
-        <div className="status-pill">
-          <FpsCounter />
-        </div>
       </header>
 
       <section className="stage" aria-label="Interactive board">

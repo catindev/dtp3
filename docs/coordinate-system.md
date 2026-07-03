@@ -16,6 +16,8 @@ The projection lives in `src/engine/layout/projection.ts`. It keeps the desk fla
 
 These values are configured in `BOARD_GEOMETRY` inside `src/engine/model/gameConstants.ts`.
 
+Camera composition and zoom limits are handled in `src/engine/layout/boardLayout.ts`. Zoom is centered on the viewport and constrained so the three playable columns remain the main visible workspace.
+
 ## Layout Outputs
 
 `createLayout(width, height, zoom, cameraOffset, state)` returns a `SceneLayout` with:
@@ -37,3 +39,9 @@ Held cards interpolate into a screen-space rectangular shape. The held card stil
 Card titles are formatted by `src/engine/render/cardTypography.ts`. They render as at most two lines; overflowing text is truncated with `...` before Pixi draws it.
 
 Empty slots use the same board-space card width and height as idle cards. Slot stroke is intentionally lighter than card borders, so empty space reads as a placement guide rather than another card.
+
+## Screen-Space HUD
+
+The card inspector is not part of board coordinates. It is a React overlay rendered in `src/components/card-inspector`, driven by `hoveredCardId` from the store and a pure detail model from `src/engine/model/cardDetails.ts`.
+
+Do not include HUD panels in desk width/depth calculations. If a new object should sit on the table, add it to layout geometry explicitly; if it should stay readable during zoom, keep it in React screen space.

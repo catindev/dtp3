@@ -10,6 +10,38 @@ The board has three columns:
 - `in-progress`
 - `done`
 
+## Cards
+
+Card ids are numeric and start at `100`. The current game card model is:
+
+```ts
+type BoardCard = {
+  id: number
+  title: string
+  category: 'feature' | 'bug' | 'incident' | 'performance' | 'compliance'
+  deadline: number
+  domain: 'PAY' | 'AUTH' | 'ADM' | 'SRCH' | 'REP' | 'NTF'
+  stats: {
+    pressure: number
+    complexity: number
+    value: number
+    clarity: number
+    quality: number
+    qa: number
+    bugs: number
+    impact: number
+  }
+  subtasks: Array<{
+    id: number
+    title: string
+    completed: boolean
+    type: 'backend' | 'frontend' | 'SRE' | 'QA'
+  }>
+}
+```
+
+Keep values in the `0..100` range unless a future rule explicitly changes the scale. Presentation labels, colors, card codes, and risk summaries live in `src/engine/model/cardPresentation.ts`. The React inspector consumes `src/engine/model/cardDetails.ts` instead of deriving display text ad hoc.
+
 Each column shows exactly one playable empty slot after its last card.
 
 Examples:
@@ -69,5 +101,7 @@ Likely next additions:
 - blocked slots;
 - card type constraints;
 - column capacity;
+- card stat changes after actions;
+- subtask completion effects;
 - turn/action state;
 - undo/redo command log.

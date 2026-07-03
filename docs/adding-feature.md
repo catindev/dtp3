@@ -7,10 +7,14 @@ Use this checklist when starting a new chat or adding a feature.
 - Game rule or placement behavior: `src/engine/model/placementRules.ts`.
 - State transition side effects such as slot collapse or board growth order: `src/engine/effects`.
 - New state or action: `src/store/gameStore.ts`.
+- New card data fields: `src/engine/model/boardTypes.ts` and `src/engine/model/boardState.ts`.
+- Card labels, colors, codes, risk text, or HUD detail derivation: `src/engine/model/cardPresentation.ts` and `src/engine/model/cardDetails.ts`.
 - Board/card size or color: `src/engine/model/gameConstants.ts`.
 - Projection or slot geometry: `src/engine/layout`.
 - Pixi object lifecycle, event wiring, and effect execution: `src/engine/render/createDeskScene.ts`.
 - Drawing details: `src/engine/render/boardRenderer.ts` or `src/engine/render/cardView.ts`.
+- Per-frame card redraw scheduling: `src/engine/render/cardMotionLoop.ts`.
+- Screen-space card detail UI: `src/components/card-inspector`.
 - Card title fitting or truncation: `src/engine/render/cardTypography.ts`.
 - Drag physics or GSAP landing: `src/engine/animation/cardMotion.ts`.
 - Card hover/held highlight timing: `src/engine/animation/cardMotion.ts`.
@@ -39,6 +43,7 @@ For drag changes, manually check:
 - accepted drop lands into a slot;
 - rejected drop returns to the source slot;
 - zoom still works within configured min/max.
+- hovered-card inspector appears without changing desk geometry.
 
 ## 5. Verify
 

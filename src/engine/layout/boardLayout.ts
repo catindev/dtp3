@@ -14,7 +14,6 @@ export type SceneLayout = ProjectionContext & {
   columnDepths: ColumnRowCounts
   deskPolygon: Polygon
   workspacePolygon: Polygon
-  inspectorSectionPolygon: Polygon
   columnPolygons: Record<ColumnId, Polygon>
   dropColumnPolygons: Record<ColumnId, Polygon>
   slotPolygons: Record<SlotId, Polygon>
@@ -39,13 +38,19 @@ type Bounds = {
 }
 
 const CAMERA_EDGE_MARGIN = {
-  top: 168,
+  top: 64,
   right: 28,
   bottom: 28,
   left: 28,
 } as const
+
+const CAMERA_COMPOSITION = {
+  centerX: 0.5,
+  centerY: 0.43,
+} as const
+
 const WORKSPACE_FIT_MARGIN = {
-  top: 128,
+  top: 72,
   right: 52,
   bottom: 36,
   left: 52,
@@ -83,12 +88,21 @@ const doesWorkspaceFit = (layout: SceneLayout) => {
   )
 }
 
-const getAxisCorrectionWithMargins = (min: number, max: number, viewportSize: number, startMargin: number, endMargin: number) => {
+const getAxisCorrectionWithMargins = (
+  min: number,
+  max: number,
+  viewportSize: number,
+  startMargin: number,
+  endMargin: number,
+  centerRatio = 0.5,
+) => {
   const contentSize = max - min
   const fitSize = viewportSize - startMargin - endMargin
 
   if (contentSize <= fitSize) {
-    return (startMargin + viewportSize - endMargin) / 2 - (min + max) / 2
+    const centeredCorrection = startMargin + fitSize * centerRatio - (min + max) / 2
+
+    return clamp(centeredCorrection, startMargin - min, viewportSize - endMargin - max)
   }
 
   return clamp(0, viewportSize - endMargin - max, startMargin - min)
@@ -115,7 +129,14 @@ export const clampCameraOffsetToLayout = (layout: SceneLayout, cameraOffset: Vec
       getAxisCorrectionWithMargins(bounds.minX, bounds.maxX, layout.width, CAMERA_EDGE_MARGIN.left, CAMERA_EDGE_MARGIN.right),
     y:
       cameraOffset.y +
-      getAxisCorrectionWithMargins(bounds.minY, bounds.maxY, layout.height, CAMERA_EDGE_MARGIN.top, CAMERA_EDGE_MARGIN.bottom),
+      getAxisCorrectionWithMargins(
+        bounds.minY,
+        bounds.maxY,
+        layout.height,
+        CAMERA_EDGE_MARGIN.top,
+        CAMERA_EDGE_MARGIN.bottom,
+        CAMERA_COMPOSITION.centerY,
+      ),
   }
 }
 
@@ -169,11 +190,6 @@ export const getWorkspaceZoomLimit = (
 export const getColumnU = (columnIndex: number) =>
   BOARD_GEOMETRY.deskPaddingU + columnIndex * (BOARD_GEOMETRY.columnWidth + BOARD_GEOMETRY.columnGap)
 
-export const getInspectorSectionU = () =>
-  getColumnU(COLUMN_IDS.length - 1) + BOARD_GEOMETRY.columnWidth + BOARD_GEOMETRY.columnGap
-
-export const getInspectorSectionWidth = () => BOARD_GEOMETRY.columnWidth * BOARD_GEOMETRY.inspectorSectionWidthFactor
-
 export const getColumnDepth = (visibleRows: number) =>
   BOARD_GEOMETRY.cardStartV +
   visibleRows * CARD_SIZE.height +
@@ -183,8 +199,7 @@ export const getColumnDepth = (visibleRows: number) =>
 export const getDeskWidth = () =>
   BOARD_GEOMETRY.deskPaddingU * 2 +
   BOARD_GEOMETRY.columnWidth * COLUMN_IDS.length +
-  BOARD_GEOMETRY.columnGap * COLUMN_IDS.length +
-  getInspectorSectionWidth()
+  BOARD_GEOMETRY.columnGap * (COLUMN_IDS.length - 1)
 
 export const getDeskDepth = (visibleRows: number) =>
   BOARD_GEOMETRY.deskPaddingV * 2 + getColumnDepth(visibleRows)
@@ -254,8 +269,8 @@ export const createLayout = (
   const baseScale = Math.min(Math.max(Math.min((width - 80) / rawWidth, (height - 104) / rawHeight), 0.45), 1.12)
   const scale = baseScale * zoom
   const origin = {
-    x: width / 2 - ((minX + rawWidth / 2) * scale) + cameraOffset.x,
-    y: height / 2 - (rawHeight * scale) / 2 - minY * scale + cameraOffset.y,
+    x: width * CAMERA_COMPOSITION.centerX - ((minX + rawWidth / 2) * scale) + cameraOffset.x,
+    y: height * CAMERA_COMPOSITION.centerY - (rawHeight * scale) / 2 - minY * scale + cameraOffset.y,
   }
   const context = { origin, scale, deskWidth, deskDepth }
   const deskPolygon = [
@@ -265,18 +280,6 @@ export const createLayout = (
     projectWithContext(0, deskDepth, context),
   ]
   const workspacePolygon = getWorkspacePolygon(context, surfaceRows)
-  const inspectorSectionU = getInspectorSectionU()
-  const inspectorSectionDepth = getColumnDepth(surfaceRows)
-  const inspectorSectionPolygon = [
-    projectWithContext(inspectorSectionU, BOARD_GEOMETRY.deskPaddingV, context),
-    projectWithContext(inspectorSectionU + getInspectorSectionWidth(), BOARD_GEOMETRY.deskPaddingV, context),
-    projectWithContext(
-      inspectorSectionU + getInspectorSectionWidth(),
-      BOARD_GEOMETRY.deskPaddingV + inspectorSectionDepth,
-      context,
-    ),
-    projectWithContext(inspectorSectionU, BOARD_GEOMETRY.deskPaddingV + inspectorSectionDepth, context),
-  ]
   const columnPolygons = Object.fromEntries(
     COLUMN_IDS.map((id, index) => {
       const u = getColumnU(index)
@@ -347,7 +350,6 @@ export const createLayout = (
     columnDepths,
     deskPolygon,
     workspacePolygon,
-    inspectorSectionPolygon,
     columnPolygons,
     dropColumnPolygons,
     slotPolygons,

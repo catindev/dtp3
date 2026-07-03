@@ -17,7 +17,6 @@ import {
   liftCard,
   setCardHover,
   settleCard,
-  updateCardMotion,
   type PointerTracker,
 } from '../animation/cardMotion'
 import {
@@ -37,14 +36,16 @@ import {
   type SceneLayout,
 } from '../layout/boardLayout'
 import type { Vec2 } from '../layout/projection'
-import { COLUMN_IDS, type CardId, type ColumnId, type ColumnRowCounts, type SlotId } from '../model/boardTypes'
+import { COLUMN_IDS, getCardIds, type CardId, type ColumnId, type ColumnRowCounts, type SlotId } from '../model/boardTypes'
 import { ZOOM } from '../model/gameConstants'
+import { getCardKicker } from '../model/cardPresentation'
 import { getColumnSlotCounts, getCompactPlacements, getFirstFreeSlot, getSlotIdForCard } from '../model/placementRules'
 import { useGameStore } from '../../store/gameStore'
 import { clamp } from '../math/easing'
 import { drawBoard, drawColumns, createColumnLabel } from './boardRenderer'
 import { formatCardTitle } from './cardTypography'
 import { createCardView, drawCard, type CardView } from './cardView'
+import { createCardMotionLoop } from './cardMotionLoop'
 
 export type DeskSceneController = {
   setZoom: (nextZoom: number) => void
@@ -83,22 +84,6 @@ const loadSceneFonts = async () => {
   ])
 }
 
-const quantize = (value: number) => Math.round(value * 100)
-
-const getCardRenderKey = (card: CardView) =>
-  [
-    card.phase,
-    quantize(card.x),
-    quantize(card.y),
-    quantize(card.restX),
-    quantize(card.restY),
-    quantize(card.rotation),
-    quantize(card.motion.lift),
-    quantize(card.motion.fly),
-    quantize(card.motion.impact),
-    quantize(card.visual.hover),
-  ].join('|')
-
 export const createDeskScene = ({
   host,
   initialZoom = 1,
@@ -127,9 +112,6 @@ export const createDeskScene = ({
   let activePan: CameraPan | null = null
   let pointer: PointerTracker = { x: 0, y: 0, previousX: 0, previousY: 0, vx: 0, vy: 0 }
   let rowMotionToken = 0
-  let sceneFrame = 0
-  let lastSceneFrameTime = 0
-  let isSceneLoopRunning = false
 
   const boardLayer = new Container()
   const cardLayer = new Container()
@@ -137,7 +119,6 @@ export const createDeskScene = ({
   const columns = new Graphics()
   const labels = new Map<ColumnId, Text>()
   const cardViews = new Map<CardId, CardView>()
-  const cardRenderKeys = new Map<CardId, string>()
   const slotEffects = new Map<SlotId, SlotCollapseEffect>()
 
   const state = () => useGameStore.getState()
@@ -150,80 +131,12 @@ export const createDeskScene = ({
     app.render()
   }
 
-  const hasUnsettledCardMotion = () => {
-    for (const card of cardViews.values()) {
-      if (card.phase === 'landing') {
-        return true
-      }
-
-      if (card.phase === 'held' && Math.abs(card.motion.lift - 1) > 0.01) {
-        return true
-      }
-
-      if (card.phase === 'idle' && Math.abs(card.motion.lift) > 0.01) {
-        return true
-      }
-
-      if (Math.abs(card.motion.impact) > 0.01) {
-        return true
-      }
-
-      if (card.phase !== 'held' && (Math.abs(card.x - card.restX) > 0.05 || Math.abs(card.y - card.restY) > 0.05)) {
-        return true
-      }
-
-      if (Math.abs(card.rotation) > 0.001 || Math.abs(card.tiltVelocity) > 0.001) {
-        return true
-      }
-    }
-
-    return false
-  }
-
-  const runSceneFrame = (now: number) => {
-    if (!isSceneLoopRunning || disposed) {
-      return
-    }
-
-    const elapsed = lastSceneFrameTime === 0 ? 16.67 : Math.min(now - lastSceneFrameTime, 34)
-    const delta = Math.min(elapsed / 16.67, 2)
-    let needsRender = false
-
-    lastSceneFrameTime = now
-    cardViews.forEach((card) => {
-      updateCardMotion(card, pointer, layout, delta)
-      const nextRenderKey = getCardRenderKey(card)
-
-      if (cardRenderKeys.get(card.id) !== nextRenderKey) {
-        drawCard(card, layout)
-        cardRenderKeys.set(card.id, nextRenderKey)
-        needsRender = true
-      }
-    })
-
-    if (needsRender) {
-      renderScene()
-    }
-
-    if (needsRender || hasUnsettledCardMotion()) {
-      sceneFrame = window.requestAnimationFrame(runSceneFrame)
-      return
-    }
-
-    isSceneLoopRunning = false
-    lastSceneFrameTime = 0
-    sceneFrame = 0
-  }
-
-  const startSceneLoop = () => {
-    if (isSceneLoopRunning || disposed) {
-      return
-    }
-
-    isSceneLoopRunning = true
-    lastSceneFrameTime = 0
-    sceneFrame = window.requestAnimationFrame(runSceneFrame)
-  }
+  const cardMotionLoop = createCardMotionLoop({
+    getCards: () => cardViews.values(),
+    getLayout: () => layout,
+    getPointer: () => pointer,
+    render: renderScene,
+  })
 
   const localPoint = (event: Pick<MouseEvent, 'clientX' | 'clientY'>): Vec2 => {
     const bounds = host.getBoundingClientRect()
@@ -266,7 +179,7 @@ export const createDeskScene = ({
 
   const syncCardViews = () => {
     const nextCards = state().cards
-    const nextIds = new Set(Object.keys(nextCards) as CardId[])
+    const nextIds = new Set(getCardIds(nextCards))
 
     cardViews.forEach((card, cardId) => {
       if (nextIds.has(cardId)) {
@@ -278,19 +191,20 @@ export const createDeskScene = ({
       if (hoveredCard?.id === cardId) {
         hoveredCard = null
         host.classList.remove('is-hovering-card')
+        useGameStore.getState().setHoveredCardId(null)
       }
       cardViews.delete(cardId)
-      cardRenderKeys.delete(cardId)
+      cardMotionLoop.forget(cardId)
     })
 
-    ;(Object.keys(nextCards) as CardId[]).forEach((cardId) => {
+    getCardIds(nextCards).forEach((cardId) => {
       const data = nextCards[cardId]
       const existing = cardViews.get(cardId)
 
       if (existing) {
         existing.data = data
         existing.title.text = formatCardTitle(data.title)
-        existing.kicker.text = data.kicker.toUpperCase()
+        existing.kicker.text = getCardKicker(data)
         return
       }
 
@@ -305,7 +219,7 @@ export const createDeskScene = ({
     const currentState = state()
     const visualPlacements = getCompactPlacements(currentState)
 
-    ;(Object.keys(currentState.cards) as CardId[]).forEach((cardId) => {
+    getCardIds(currentState.cards).forEach((cardId) => {
       const card = cardViews.get(cardId)
 
       if (!card) {
@@ -340,7 +254,7 @@ export const createDeskScene = ({
 
       if (shouldHop) {
         hopCardToRest(card, layout)
-        startSceneLoop()
+        cardMotionLoop.start()
       }
     })
   }
@@ -353,7 +267,7 @@ export const createDeskScene = ({
     relayoutCards()
     cardViews.forEach((card) => {
       drawCard(card, layout)
-      cardRenderKeys.set(card.id, getCardRenderKey(card))
+      cardMotionLoop.remember(card)
     })
     renderScene()
   }
@@ -374,7 +288,9 @@ export const createDeskScene = ({
     }
 
     host.classList.toggle('is-hovering-card', Boolean(hoveredCard))
-    startSceneLoop()
+    useGameStore.getState().setHoveredCardId(hoveredCard?.id ?? null)
+    renderScene()
+    cardMotionLoop.start()
   }
 
   const recreateLayout = () => {
@@ -618,7 +534,7 @@ export const createDeskScene = ({
     host.classList.add('is-dragging')
     useGameStore.getState().beginDrag(card.id, getSlotIdForCard(state(), card.id))
     liftCard(card)
-    startSceneLoop()
+    cardMotionLoop.start()
     event.preventDefault()
   }
 
@@ -646,7 +562,7 @@ export const createDeskScene = ({
     pointer.previousY = pointer.y
     pointer.x = point.x
     pointer.y = point.y
-    startSceneLoop()
+    cardMotionLoop.start()
     const nextHoverColumnId = validAdjacentDropColumn(layout, point, state().drag?.sourceColumnId ?? 'backlog')
     const nextHoverSlotId =
       nextHoverColumnId && activeCard ? getFirstFreeSlot(state(), nextHoverColumnId, activeCard.id) : null
@@ -696,7 +612,7 @@ export const createDeskScene = ({
 
     syncAndRedraw()
     settleCard(card, layout, targetColumnId)
-    startSceneLoop()
+    cardMotionLoop.start()
     event.preventDefault()
   }
 
@@ -766,9 +682,7 @@ export const createDeskScene = ({
       unsubscribe()
       resizeObserver.disconnect()
       clearBoardGrowth(growthMotion)
-      if (sceneFrame) {
-        window.cancelAnimationFrame(sceneFrame)
-      }
+      cardMotionLoop.stop()
       slotEffects.forEach(clearSlotEffect)
       slotEffects.clear()
       host.removeEventListener('pointerdown', handlePointerDown)
@@ -786,6 +700,7 @@ export const createDeskScene = ({
         label.removeFromParent()
         label.destroy()
       })
+      useGameStore.getState().setHoveredCardId(null)
 
       if (app) {
         app.destroy(true, { children: true })
