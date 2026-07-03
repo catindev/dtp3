@@ -31,10 +31,15 @@ const getCardRenderKey = (card: CardView) =>
     quantize(card.motion.fly),
     quantize(card.motion.impact),
     quantize(card.visual.hover),
+    quantize(card.visual.hoverTarget),
   ].join('|')
 
 const hasUnsettledCardMotion = (cards: Iterable<CardView>) => {
   for (const card of cards) {
+    if (Math.abs(card.visual.hover - card.visual.hoverTarget) > 0.002 || Math.abs(card.visual.hoverVelocity) > 0.002) {
+      return true
+    }
+
     if (card.phase === 'landing') {
       return true
     }

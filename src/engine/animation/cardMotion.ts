@@ -18,12 +18,14 @@ export const clearCardTweens = (card: CardView) => {
 }
 
 export const setCardHover = (card: CardView, isHovered: boolean) => {
-  gsap.killTweensOf(card.visual)
-  gsap.to(card.visual, {
-    hover: isHovered ? 1 : 0,
-    duration: isHovered ? 0.18 : 0.12,
-    ease: isHovered ? 'back.out(1.9)' : 'power2.out',
-  })
+  const nextTarget = isHovered ? 1 : 0
+
+  if (card.visual.hoverTarget === nextTarget) {
+    return
+  }
+
+  card.visual.hoverTarget = nextTarget
+  card.visual.hoverVelocity += isHovered ? 0.08 : -0.04
 }
 
 export const liftCard = (card: CardView) => {
@@ -117,6 +119,18 @@ export const hopCardToRest = (card: CardView, layout: SceneLayout) => {
 }
 
 export const updateCardMotion = (card: CardView, pointer: PointerTracker, layout: SceneLayout, delta: number) => {
+  const hoverTarget = card.visual.hoverTarget
+  const hoverSpring = (hoverTarget - card.visual.hover) * 0.42 * delta
+  const hoverDamping = Math.pow(hoverTarget > 0 ? 0.62 : 0.52, delta)
+
+  card.visual.hoverVelocity = (card.visual.hoverVelocity + hoverSpring) * hoverDamping
+  card.visual.hover = clamp(card.visual.hover + card.visual.hoverVelocity * delta, 0, 1.16)
+
+  if (Math.abs(card.visual.hover - hoverTarget) < 0.002 && Math.abs(card.visual.hoverVelocity) < 0.002) {
+    card.visual.hover = hoverTarget
+    card.visual.hoverVelocity = 0
+  }
+
   if (card.phase === 'held') {
     const targetX = pointer.x + card.dragOffset.x
     const targetY = pointer.y + card.dragOffset.y - 18 * layout.scale * card.motion.lift

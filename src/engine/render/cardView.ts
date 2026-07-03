@@ -9,6 +9,7 @@ import { applySurfaceTextTransform } from './textTransform'
 import { CARD_TITLE_STYLE, formatCardTitle } from './cardTypography'
 import { drawRoundedPolygon, offsetPolygon, scalePolygon, spreadPolygon } from './pixiPrimitives'
 import { getCardAccent, getCardKicker } from '../model/cardPresentation'
+import infoIconSvg from '../../assets/info-icon.svg?raw'
 
 export type CardPhase = 'idle' | 'held' | 'landing'
 
@@ -28,6 +29,7 @@ export type CardView = {
   body: Graphics
   shine: Graphics
   accent: Graphics
+  infoIcon: Graphics
   title: Text
   kicker: Text
   x: number
@@ -47,12 +49,20 @@ export type CardView = {
   }
   visual: {
     hover: number
+    hoverTarget: number
+    hoverVelocity: number
   }
   phase: CardPhase
   flight: Flight | null
   hitPolygon: Polygon
+  infoHitPolygon: Polygon
   slotId: SlotId | null
 }
+
+const INFO_ICON_SIZE = 38
+const INFO_ICON_SOURCE_SIZE = 32
+const INFO_ICON_INSET = 20
+const INFO_ICON_HIT_SIZE = 46
 
 const rotatePoint = (point: Vec2, rotation: number): Vec2 => {
   const cos = Math.cos(rotation)
@@ -130,6 +140,7 @@ export const createCardView = (card: BoardCard) => {
   const body = new Graphics()
   const shine = new Graphics()
   const accent = new Graphics()
+  const infoIcon = new Graphics().svg(infoIconSvg)
   const title = new Text({
     text: formatCardTitle(card.title),
     style: CARD_TITLE_STYLE,
@@ -147,7 +158,7 @@ export const createCardView = (card: BoardCard) => {
 
   title.anchor.set(0, 0)
   kicker.anchor.set(0, 0.5)
-  root.addChild(shadow, body, shine, accent, title, kicker)
+  root.addChild(shadow, body, shine, accent, title, kicker, infoIcon)
 
   return {
     id: card.id,
@@ -157,6 +168,7 @@ export const createCardView = (card: BoardCard) => {
     body,
     shine,
     accent,
+    infoIcon,
     title,
     kicker,
     x: 0,
@@ -170,10 +182,11 @@ export const createCardView = (card: BoardCard) => {
     targetRotation: 0,
     dragOffset: { x: 0, y: 0 },
     motion: { lift: 0, fly: 1, impact: 0 },
-    visual: { hover: 0 },
+    visual: { hover: 0, hoverTarget: 0, hoverVelocity: 0 },
     phase: 'idle',
     flight: null,
     hitPolygon: [],
+    infoHitPolygon: [],
     slotId: null,
   } satisfies CardView
 }
@@ -213,6 +226,17 @@ export const drawCard = (card: CardView, layout: SceneLayout) => {
   const titleScreen = { x: heldContentLeft, y: heldContentTop + 24 * layout.scale }
   const kickerPoint = mixPoint(kickerSurface, kickerScreen, contentLift)
   const titlePoint = mixPoint(titleSurface, titleScreen, contentLift)
+  const infoIconCenterU = CARD_SIZE.width / 2 - INFO_ICON_INSET
+  const infoIconCenterV = -CARD_SIZE.height / 2 + INFO_ICON_INSET
+  const infoIconSurface = getSurfaceLocalPoint(layout, card, infoIconCenterU, infoIconCenterV)
+  const infoIconHitSurface = getSurfaceLocalRect(
+    layout,
+    card,
+    infoIconCenterU - INFO_ICON_HIT_SIZE / 2,
+    infoIconCenterV - INFO_ICON_HIT_SIZE / 2,
+    INFO_ICON_HIT_SIZE,
+    INFO_ICON_HIT_SIZE,
+  )
   const textU = card.restU + contentLeftU
   const kickerV = card.restV + contentTopV + 12
   const titleV = card.restV + contentTopV + 24
@@ -315,6 +339,19 @@ export const drawCard = (card: CardView, layout: SceneLayout) => {
   card.title.y = titlePoint.y
   applySurfaceTextTransform(card.title, layout, textU, titleV, 0.78 + contentLift * 0.14, shapeLift)
   card.title.alpha = 0.92
+  const infoIconAppear = card.phase === 'idle' ? idleHoverMotion : 0
+  const infoIconAlpha = clamp(infoIconAppear, 0, 1)
+  const infoIconOvershoot = Math.max(0, infoIconAppear - 1)
+  const infoIconScale =
+    ((INFO_ICON_SIZE * layout.scale) / INFO_ICON_SOURCE_SIZE) * (0.42 + infoIconAlpha * 0.58 + infoIconOvershoot * 0.16)
+
+  card.infoIcon.visible = infoIconAlpha > 0.015
+  card.infoIcon.x = infoIconSurface.x - (INFO_ICON_SOURCE_SIZE * infoIconScale) / 2
+  card.infoIcon.y = infoIconSurface.y - (INFO_ICON_SOURCE_SIZE * infoIconScale) / 2
+  card.infoIcon.rotation = 0
+  card.infoIcon.skew.set(0, 0)
+  card.infoIcon.scale.set(infoIconScale)
+  card.infoIcon.alpha = infoIconAlpha
   card.hitPolygon = corners.map((point) => {
     const scaled = { x: point.x * scaleX, y: point.y * scaleY }
     const rotated = rotatePoint(scaled, card.rotation)
@@ -324,4 +361,16 @@ export const drawCard = (card: CardView, layout: SceneLayout) => {
       y: rotated.y + card.y,
     }
   })
+  card.infoHitPolygon =
+    card.phase === 'idle' && infoIconAlpha > 0.2
+      ? infoIconHitSurface.map((point) => {
+          const scaled = { x: point.x * scaleX, y: point.y * scaleY }
+          const rotated = rotatePoint(scaled, card.rotation)
+
+          return {
+            x: rotated.x + card.x,
+            y: rotated.y + card.y,
+          }
+        })
+      : []
 }

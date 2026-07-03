@@ -11,7 +11,11 @@ Use this checklist when starting a new chat or adding a feature.
 - Card labels, colors, codes, risk text, or HUD detail derivation: `src/engine/model/cardPresentation.ts` and `src/engine/model/cardDetails.ts`.
 - Board/card size or color: `src/engine/model/gameConstants.ts`.
 - Projection or slot geometry: `src/engine/layout`.
-- Pixi object lifecycle, event wiring, and effect execution: `src/engine/render/createDeskScene.ts`.
+- Pixi scene orchestration, event wiring, and store subscription: `src/engine/render/createDeskScene.ts`.
+- Runtime camera/zoom/HUD overlap state: `src/engine/render/sceneViewport.ts`.
+- Runtime slot-row growth/shrink and removed-slot collapse execution: `src/engine/render/sceneRowMotion.ts`.
+- Pixi card/column-label sync and cleanup: `src/engine/render/sceneEntities.ts`.
+- Card rest-position sync and compacted-slot hop behavior: `src/engine/render/sceneCardLayout.ts`.
 - Drawing details: `src/engine/render/boardRenderer.ts` or `src/engine/render/cardView.ts`.
 - Per-frame card redraw scheduling: `src/engine/render/cardMotionLoop.ts`.
 - Screen-space card detail UI: `src/components/card-inspector`.

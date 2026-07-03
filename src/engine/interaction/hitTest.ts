@@ -11,6 +11,10 @@ export type HitCardLike = {
   phase: 'idle' | 'held' | 'landing'
 }
 
+export type HitCardInfoLike = HitCardLike & {
+  infoHitPolygon: Polygon
+}
+
 export const pointInPolygon = (point: Vec2, polygon: Polygon) => {
   let inside = false
 
@@ -57,3 +61,9 @@ export const hitCard = <TCard extends HitCardLike>(cards: Iterable<TCard>, point
     .filter((card) => card.phase === 'idle')
     .sort((a, b) => b.root.zIndex - a.root.zIndex)
     .find((card) => pointInPolygon(point, card.hitPolygon)) ?? null
+
+export const hitCardInfoIcon = <TCard extends HitCardInfoLike>(cards: Iterable<TCard>, point: Vec2) =>
+  [...cards]
+    .filter((card) => card.phase === 'idle')
+    .sort((a, b) => b.root.zIndex - a.root.zIndex)
+    .find((card) => pointInPolygon(point, card.infoHitPolygon)) ?? null

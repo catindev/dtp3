@@ -12,7 +12,7 @@ The prototype is split into engine layers so the board can evolve into a game-li
 
 - Store: `src/store/gameStore.ts`
   - Holds cards, columns, placements, and drag state.
-  - Holds UI-facing state that is derived from engine interaction, such as `selectedCardId`.
+  - Holds UI-facing state that is derived from engine interaction, such as `inspectedCardId`.
   - Exposes actions for drag lifecycle and card movement.
 
 - Model: `src/engine/model`
@@ -34,6 +34,10 @@ The prototype is split into engine layers so the board can evolve into a game-li
 - Render: `src/engine/render`
   - `createDeskScene.ts`: Pixi lifecycle, pointer events, store subscription.
   - Executes effect plans from `src/engine/effects`; it should not decide row growth/shrink rules directly.
+  - `sceneRowMotion.ts`: owns runtime row-growth/shrink animation state and removed-slot collapse effects.
+  - `sceneViewport.ts`: owns zoom, camera offset, HUD inset shift, and hover locks caused by layout shifts.
+  - `sceneEntities.ts`: syncs Pixi labels/card views with model state and destroys stale Pixi objects.
+  - `sceneCardLayout.ts`: applies model placements to card rest poses and starts card hop motion when compacted slots move.
   - `cardMotionLoop.ts`: requestAnimationFrame loop for card dirty-checking and physical motion updates.
   - `boardRenderer.ts`: desk, columns, labels, empty slots.
   - `cardView.ts`: card graphics, card text, shadows, hit polygons.
@@ -81,3 +85,14 @@ flowchart LR
 The right-hand card inspector is a React HUD overlay. It must not be included in `getDeskWidth`, `deskPolygon`, `workspacePolygon`, or any Pixi board layout. If a future feature needs a real object on the tabletop, model it as board geometry separately from HUD components.
 
 When the inspector is visible on wide screens, it reports its right-side inset to `createDeskScene`. The scene applies a bounded spring camera shift so the board yields space to the HUD without changing board rules, slot geometry, or card placements.
+
+## Refactor Boundaries
+
+Keep `createDeskScene.ts` as an orchestrator. It can wire browser events, store subscriptions, and render passes, but new persistent runtime state should usually go into one of the focused scene modules.
+
+- Camera, zoom, HUD overlap, and layout-shift hover locks: `sceneViewport.ts`.
+- Slot-count animation, delayed shrink, and removed-slot collapse runtime state: `sceneRowMotion.ts`.
+- Pixi object creation/destruction for cards and labels: `sceneEntities.ts`.
+- Card rest-position synchronization and compacted-slot hop animation: `sceneCardLayout.ts`.
+
+If a change needs a pure rule, put it under `src/engine/model` or `src/engine/effects` before teaching Pixi how to visualize it.

@@ -1,5 +1,6 @@
 import { IsometricDesk } from './components/IsometricDesk'
 import { AbstractBackground } from './components/AbstractBackground'
+import { DebugOverlay } from './components/DebugOverlay'
 import logotypeUrl from './assets/logotype.svg'
 import './App.css'
 
@@ -16,6 +17,8 @@ function App() {
       <section className="stage" aria-label="Interactive board">
         <IsometricDesk />
       </section>
+
+      <DebugOverlay />
     </main>
   )
 }

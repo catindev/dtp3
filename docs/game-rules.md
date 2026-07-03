@@ -74,7 +74,7 @@ The desk height is driven by the tallest column. Individual columns may have dif
 
 When a card moves into a target column, it lands in that column's single empty slot. After landing, a new empty slot appears below it. If this makes the target column taller than the current desk, the desk and column grow with spring motion.
 
-Row-count changes are planned in `src/engine/effects/boardRowEffects.ts`. The Pixi scene executes that plan: removed slots collapse first, then any delayed board/column shrink starts.
+Row-count changes are planned in `src/engine/effects/boardRowEffects.ts`. Runtime execution lives in `src/engine/render/sceneRowMotion.ts`: removed slots collapse first, then any delayed board/column shrink starts.
 
 Slot visuals are not separate playable objects. They mirror card geometry and only represent legal placement space for the current column state.
 

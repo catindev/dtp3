@@ -21,17 +21,17 @@ type CardInspectorProps = {
 
 export function CardInspector({ onRightInsetChange }: CardInspectorProps) {
   const panelRef = useRef<HTMLElement | null>(null)
-  const { cards, columns, placements, selectedCardId } = useGameStore(
+  const { cards, columns, placements, inspectedCardId } = useGameStore(
     useShallow((state) => ({
       cards: state.cards,
       columns: state.columns,
       placements: state.placements,
-      selectedCardId: state.selectedCardId,
+      inspectedCardId: state.inspectedCardId,
     })),
   )
   const details = useMemo(
-    () => getCardDetailModel({ cards, columns, placements, drag: null }, selectedCardId),
-    [cards, columns, placements, selectedCardId],
+    () => getCardDetailModel({ cards, columns, placements, drag: null }, inspectedCardId),
+    [cards, columns, inspectedCardId, placements],
   )
   const [visibleDetails, setVisibleDetails] = useState<CardDetailModel | null>(details)
   const [isExiting, setIsExiting] = useState(false)
@@ -73,9 +73,16 @@ export function CardInspector({ onRightInsetChange }: CardInspectorProps) {
     let frame = 0
 
     const measure = () => {
-      const rect = panel.getBoundingClientRect()
-      const isBottomSheet = rect.left <= 16 && rect.width >= window.innerWidth * 0.78
-      const rightInset = isBottomSheet ? 0 : Math.max(0, window.innerWidth - rect.left + 28)
+      const isBottomSheet = window.matchMedia('(max-width: 760px)').matches
+
+      if (isBottomSheet) {
+        onRightInsetChange?.(0)
+        return
+      }
+
+      const styles = window.getComputedStyle(panel)
+      const rightOffset = Number.parseFloat(styles.right)
+      const rightInset = panel.offsetWidth + (Number.isFinite(rightOffset) ? rightOffset : 0) + 28
 
       onRightInsetChange?.(rightInset)
     }

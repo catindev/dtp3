@@ -16,7 +16,7 @@ The projection lives in `src/engine/layout/projection.ts`. It keeps the desk fla
 
 These values are configured in `BOARD_GEOMETRY` inside `src/engine/model/gameConstants.ts`.
 
-Camera composition and zoom limits are handled in `src/engine/layout/boardLayout.ts`. Zoom is centered on the viewport and constrained so the three playable columns remain the main visible workspace.
+Camera composition and zoom limits are calculated in `src/engine/layout/boardLayout.ts`. Runtime camera offset, zoom value, and HUD-driven spring shift are owned by `src/engine/render/sceneViewport.ts`. Zoom is centered on the viewport and constrained so the three playable columns remain the main visible workspace.
 
 ## Layout Outputs
 
@@ -42,6 +42,6 @@ Empty slots use the same board-space card width and height as idle cards. Slot s
 
 ## Screen-Space HUD
 
-The card inspector is not part of board coordinates. It is a React overlay rendered in `src/components/card-inspector`, driven by `selectedCardId` from the store and a pure detail model from `src/engine/model/cardDetails.ts`.
+The card inspector is not part of board coordinates. It is a React overlay rendered in `src/components/card-inspector`, driven by `inspectedCardId` from the store and a pure detail model from `src/engine/model/cardDetails.ts`.
 
 Do not include HUD panels in desk width/depth calculations. If a new object should sit on the table, add it to layout geometry explicitly; if it should stay readable during zoom, keep it in React screen space.
