@@ -3,6 +3,7 @@ import { BOARD_GEOMETRY, CARD_SIZE, ZOOM } from '../model/gameConstants'
 import { getColumnSlotCounts, makeSlotId, parseSlotId } from '../model/placementRules'
 import { projectRaw, projectWithContext, type Polygon, type ProjectionContext, type Vec2 } from './projection'
 import { clamp } from '../math/easing'
+import { CAMERA_COMPOSITION, CAMERA_EDGE_MARGIN, WORKSPACE_FIT_MARGIN } from './viewportConfig'
 
 export type SceneLayout = ProjectionContext & {
   width: number
@@ -36,25 +37,6 @@ type Bounds = {
   minY: number
   maxY: number
 }
-
-const CAMERA_EDGE_MARGIN = {
-  top: 64,
-  right: 28,
-  bottom: 28,
-  left: 28,
-} as const
-
-const CAMERA_COMPOSITION = {
-  centerX: 0.5,
-  centerY: 0.43,
-} as const
-
-const WORKSPACE_FIT_MARGIN = {
-  top: 72,
-  right: 52,
-  bottom: 36,
-  left: 52,
-} as const
 
 export const getPolygonBounds = (polygon: Polygon): Bounds => ({
   minX: Math.min(...polygon.map((point) => point.x)),

@@ -11,7 +11,7 @@ import { drawRoundedPolygon, offsetPolygon, scalePolygon, spreadPolygon } from '
 import { getCardAccent, getCardKicker } from '../model/cardPresentation'
 import infoIconSvg from '../../assets/info-icon.svg?raw'
 
-export type CardPhase = 'idle' | 'held' | 'landing'
+export type CardPhase = 'idle' | 'held' | 'landing' | 'inspector-opening' | 'inspector-open' | 'inspector-returning'
 
 export type Flight = {
   fromX: number
@@ -46,6 +46,11 @@ export type CardView = {
     lift: number
     fly: number
     impact: number
+    contentAlpha: number
+    detailAlpha: number
+    backdropAlpha: number
+    inspectorWidth: number
+    inspectorHeight: number
   }
   visual: {
     hover: number
@@ -134,6 +139,22 @@ const getScreenLocalRect = (left: number, top: number, width: number, height: nu
 
 const mixCorners = (rest: Polygon, lifted: Polygon, lift: number) => mixPolygon(rest, lifted, easeOutQuad(lift))
 
+const mixColor = (from: number, to: number, amount: number) => {
+  const t = clamp(amount, 0, 1)
+  const fromR = (from >> 16) & 255
+  const fromG = (from >> 8) & 255
+  const fromB = from & 255
+  const toR = (to >> 16) & 255
+  const toG = (to >> 8) & 255
+  const toB = to & 255
+
+  return (
+    (Math.round(lerp(fromR, toR, t)) << 16) |
+    (Math.round(lerp(fromG, toG, t)) << 8) |
+    Math.round(lerp(fromB, toB, t))
+  )
+}
+
 export const createCardView = (card: BoardCard) => {
   const root = new Container()
   const shadow = new Graphics()
@@ -181,7 +202,16 @@ export const createCardView = (card: BoardCard) => {
     tiltVelocity: 0,
     targetRotation: 0,
     dragOffset: { x: 0, y: 0 },
-    motion: { lift: 0, fly: 1, impact: 0 },
+    motion: {
+      lift: 0,
+      fly: 1,
+      impact: 0,
+      contentAlpha: 1,
+      detailAlpha: 0,
+      backdropAlpha: 0,
+      inspectorWidth: 0,
+      inspectorHeight: 0,
+    },
     visual: { hover: 0, hoverTarget: 0, hoverVelocity: 0 },
     phase: 'idle',
     flight: null,
@@ -194,16 +224,31 @@ export const createCardView = (card: BoardCard) => {
 export const drawCard = (card: CardView, layout: SceneLayout) => {
   const lift = clamp(card.motion.lift, 0, 1)
   const impact = card.motion.impact
-  const scaleX = 1 + lift * 0.035 + impact * 0.045
-  const scaleY = 1 + lift * 0.035 - impact * 0.06
-  const shapeLift = card.phase === 'held' ? 1 : lift
+  const isInspectorPhase =
+    card.phase === 'inspector-opening' ||
+    card.phase === 'inspector-open' ||
+    card.phase === 'inspector-returning'
+  const inspectorStyle = isInspectorPhase ? easeOutQuad(lift) : 0
+  const liftScale = isInspectorPhase ? 0 : lift * 0.035
+  const scaleX = 1 + liftScale + impact * 0.045
+  const scaleY = 1 + liftScale - impact * 0.06
+  const shapeLift = card.phase === 'held' || card.phase === 'inspector-open' ? 1 : lift
   const restCorners = getCardRestCorners(layout, card.restU, card.restV)
-  const liftedCorners = getHeldCardCorners(layout)
+  const inspectorWidth = card.motion.inspectorWidth || getHeldCardSize(layout).width
+  const inspectorHeight = card.motion.inspectorHeight || getHeldCardSize(layout).height
+  const liftedCorners = isInspectorPhase
+    ? getScreenLocalRect(-inspectorWidth / 2, -inspectorHeight / 2, inspectorWidth, inspectorHeight)
+    : getHeldCardCorners(layout)
   const corners = mixCorners(restCorners, liftedCorners, shapeLift)
   const hoverMotion = clamp(Math.max(card.visual.hover, card.phase === 'held' ? 1 : 0), 0, 1.18)
   const hoverAlpha = clamp(hoverMotion, 0, 1)
   const idleHoverMotion = card.phase === 'idle' ? clamp(card.visual.hover, 0, 1.18) : 0
   const idleHoverAlpha = clamp(idleHoverMotion, 0, 1)
+  const contentAlpha = clamp(card.motion.contentAlpha, 0, 1)
+  const bodyFill = mixColor(TOKENS.card.fill, 0xf3e7d2, inspectorStyle)
+  const bodyBorder = mixColor(TOKENS.card.border, 0xc9702a, inspectorStyle)
+  const bodyRadius = lerp(TOKENS.card.radius * layout.scale, 18, inspectorStyle)
+  const bodyStrokeWidth = lerp(1.5 * layout.scale, 4, inspectorStyle)
   const contentLift = easeOutQuad(shapeLift)
   const cardLeftU = -CARD_SIZE.width / 2
   const cardTopV = -CARD_SIZE.height / 2
@@ -255,32 +300,52 @@ export const drawCard = (card: CardView, layout: SceneLayout) => {
   card.root.rotation = card.rotation
   card.root.scale.set(scaleX, scaleY)
   card.root.zIndex =
-    card.phase === 'held' ? 100_000 : card.phase === 'landing' ? 90_000 : Math.round(card.y)
+    card.phase === 'held' || isInspectorPhase ? 100_000 : card.phase === 'landing' ? 90_000 : Math.round(card.y)
   card.shadow.clear()
   card.body.clear()
   card.shine.clear()
   card.accent.clear()
-  drawRoundedPolygon(
-    card.shadow,
-    offsetPolygon(corners, floorOffset.x, floorOffset.y),
-    TOKENS.card.radius * layout.scale,
-    SURFACE_SHADOW,
-    0.05,
-  )
-  drawRoundedPolygon(
-    card.shadow,
-    offsetPolygon(scalePolygon(corners, 1 + lift * 0.07, 1 + lift * 0.05), castOffset.x, castOffset.y),
-    TOKENS.card.radius * layout.scale,
-    SURFACE_SHADOW,
-    0.038 + lift * 0.04,
-  )
-  drawRoundedPolygon(
-    card.shadow,
-    offsetPolygon(scalePolygon(corners, 1 + lift * 0.2, 1 + lift * 0.16), ambientOffset.x, ambientOffset.y),
-    TOKENS.card.radius * layout.scale,
-    SURFACE_SHADOW,
-    lift * 0.035,
-  )
+  if (isInspectorPhase) {
+    const modalShadow = clamp(inspectorStyle, 0, 1)
+    const modalSpread = 3 + modalShadow * 5
+
+    drawRoundedPolygon(
+      card.shadow,
+      offsetPolygon(spreadPolygon(corners, modalSpread), 0, 10),
+      bodyRadius + modalSpread * 0.6,
+      SURFACE_SHADOW,
+      0.055 * modalShadow,
+    )
+    drawRoundedPolygon(
+      card.shadow,
+      offsetPolygon(spreadPolygon(corners, 1 + modalShadow * 3), 0, 3),
+      bodyRadius + 4,
+      SURFACE_SHADOW,
+      0.05 * modalShadow,
+    )
+  } else {
+    drawRoundedPolygon(
+      card.shadow,
+      offsetPolygon(corners, floorOffset.x, floorOffset.y),
+      TOKENS.card.radius * layout.scale,
+      SURFACE_SHADOW,
+      0.05,
+    )
+    drawRoundedPolygon(
+      card.shadow,
+      offsetPolygon(scalePolygon(corners, 1 + lift * 0.07, 1 + lift * 0.05), castOffset.x, castOffset.y),
+      TOKENS.card.radius * layout.scale,
+      SURFACE_SHADOW,
+      0.038 + lift * 0.04,
+    )
+    drawRoundedPolygon(
+      card.shadow,
+      offsetPolygon(scalePolygon(corners, 1 + lift * 0.2, 1 + lift * 0.16), ambientOffset.x, ambientOffset.y),
+      TOKENS.card.radius * layout.scale,
+      SURFACE_SHADOW,
+      lift * 0.035,
+    )
+  }
   if (idleHoverMotion > 0.001) {
     const outlineSpread = 2.3 * layout.scale * idleHoverMotion
     const dropSpread = 5 * layout.scale * idleHoverMotion
@@ -303,12 +368,12 @@ export const drawCard = (card: CardView, layout: SceneLayout) => {
   drawRoundedPolygon(
     card.body,
     corners,
-    TOKENS.card.radius * layout.scale,
-    TOKENS.card.fill,
+    bodyRadius,
+    bodyFill,
     1,
-    TOKENS.card.border,
+    bodyBorder,
     1,
-    1.5 * layout.scale,
+    bodyStrokeWidth,
   )
   if (hoverMotion > 0.001) {
     drawRoundedPolygon(
@@ -328,17 +393,20 @@ export const drawCard = (card: CardView, layout: SceneLayout) => {
     accentCorners,
     3 * layout.scale,
     getCardAccent(card.data),
-    0.94,
+    0.94 * contentAlpha,
   )
 
+  card.accent.visible = contentAlpha > 0.01
   card.kicker.x = kickerPoint.x
   card.kicker.y = kickerPoint.y
   applySurfaceTextTransform(card.kicker, layout, textU, kickerV, 0.76 + contentLift * 0.1, shapeLift)
-  card.kicker.alpha = 0.72
+  card.kicker.alpha = 0.72 * contentAlpha
+  card.kicker.visible = contentAlpha > 0.01
   card.title.x = titlePoint.x
   card.title.y = titlePoint.y
   applySurfaceTextTransform(card.title, layout, textU, titleV, 0.78 + contentLift * 0.14, shapeLift)
-  card.title.alpha = 0.92
+  card.title.alpha = 0.92 * contentAlpha
+  card.title.visible = contentAlpha > 0.01
   const infoIconAppear = card.phase === 'idle' ? idleHoverMotion : 0
   const infoIconAlpha = clamp(infoIconAppear, 0, 1)
   const infoIconOvershoot = Math.max(0, infoIconAppear - 1)

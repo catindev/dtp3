@@ -8,7 +8,7 @@ export type HitCardLike = {
   root: {
     zIndex: number
   }
-  phase: 'idle' | 'held' | 'landing'
+  phase: string
 }
 
 export type HitCardInfoLike = HitCardLike & {
@@ -56,14 +56,28 @@ export const validAdjacentDropColumn = (layout: SceneLayout, point: Vec2, source
   return Math.abs(targetIndex - sourceIndex) === 1 ? targetColumnId : null
 }
 
+const hitTopIdleCard = <TCard extends HitCardLike>(
+  cards: Iterable<TCard>,
+  point: Vec2,
+  getPolygon: (card: TCard) => Polygon,
+) => {
+  let hit: TCard | null = null
+
+  for (const card of cards) {
+    if (card.phase !== 'idle' || !pointInPolygon(point, getPolygon(card))) {
+      continue
+    }
+
+    if (!hit || card.root.zIndex > hit.root.zIndex) {
+      hit = card
+    }
+  }
+
+  return hit
+}
+
 export const hitCard = <TCard extends HitCardLike>(cards: Iterable<TCard>, point: Vec2) =>
-  [...cards]
-    .filter((card) => card.phase === 'idle')
-    .sort((a, b) => b.root.zIndex - a.root.zIndex)
-    .find((card) => pointInPolygon(point, card.hitPolygon)) ?? null
+  hitTopIdleCard(cards, point, (card) => card.hitPolygon)
 
 export const hitCardInfoIcon = <TCard extends HitCardInfoLike>(cards: Iterable<TCard>, point: Vec2) =>
-  [...cards]
-    .filter((card) => card.phase === 'idle')
-    .sort((a, b) => b.root.zIndex - a.root.zIndex)
-    .find((card) => pointInPolygon(point, card.infoHitPolygon)) ?? null
+  hitTopIdleCard(cards, point, (card) => card.infoHitPolygon)

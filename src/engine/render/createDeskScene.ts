@@ -1,7 +1,10 @@
 import { Application, Container, Graphics } from 'pixi.js'
 import type { Text } from 'pixi.js'
 import {
+  closeCardInspector,
   liftCard,
+  openCardInspector,
+  resetCardToRest,
   setCardHover,
   settleCard,
   type PointerTracker,
@@ -12,7 +15,6 @@ import {
   clampCameraOffsetToLayout,
   createLayout,
   fitCameraOffsetToWorkspace,
-  getPolygonBounds,
   getWorkspaceZoomLimit,
   type SceneLayout,
 } from '../layout/boardLayout'
@@ -22,9 +24,17 @@ import { ZOOM } from '../model/gameConstants'
 import { getColumnSlotCounts, getFirstFreeSlot, getSlotIdForCard } from '../model/placementRules'
 import { useGameStore } from '../../store/gameStore'
 import { clamp } from '../math/easing'
+import { getCardDetailModel } from '../model/cardDetails'
 import { drawBoard, drawColumns } from './boardRenderer'
 import { drawCard, type CardView } from './cardView'
 import { createCardMotionLoop } from './cardMotionLoop'
+import {
+  getInspectorTargetRect,
+  INSPECTOR_MOBILE_QUERY,
+  isPointInsideInspectorShell,
+  toLocalInspectorTarget,
+} from './inspectorLayout'
+import { createInspectorView, destroyInspectorView, drawInspectorView } from './inspectorRenderer'
 import { createSceneViewport } from './sceneViewport'
 import { createSceneRowMotion } from './sceneRowMotion'
 import {
@@ -82,20 +92,26 @@ export const createDeskScene = ({
   let app: Application | null = null
   const viewport = createSceneViewport(initialZoom)
   const initialState = useGameStore.getState()
+  const state = () => useGameStore.getState()
   const initialRows = getColumnSlotCounts(initialState)
   const rowMotion = createSceneRowMotion(initialRows, {
     isActive: () => !disposed,
     onUpdate: () => syncAndRedraw(),
   })
-  const initialSize = getHostSize(host)
-  let layout = createLayout(initialSize.width, initialSize.height, viewport.zoom, viewport.cameraOffset, initialState, {
+  const getLayoutOptions = () => ({
     surfaceRowsByColumn: rowMotion.growthMotion.columnRows,
     slotRowsByColumn: rowMotion.getTargetRows(),
   })
+  const createSceneLayout = (size: ReturnType<typeof getHostSize>, zoom: number, cameraOffset: Vec2) =>
+    createLayout(size.width, size.height, zoom, cameraOffset, state(), getLayoutOptions())
+  const getSceneZoomMax = (size: ReturnType<typeof getHostSize>) =>
+    getWorkspaceZoomLimit(size.width, size.height, state(), getLayoutOptions())
+  const initialSize = getHostSize(host)
+  let layout = createSceneLayout(initialSize, viewport.zoom, viewport.cameraOffset)
   let hoverColumnId: ColumnId | null = null
   let hoverSlotId: SlotId | null = null
   let hoveredCard: CardView | null = null
-  let modalCardId: CardId | null = initialState.inspector?.cardId ?? null
+  let inspectorCardId: CardId | null = initialState.inspector?.cardId ?? null
   let activeCard: CardView | null = null
   let activePointerId: number | null = null
   let activePan: CameraPan | null = null
@@ -107,8 +123,16 @@ export const createDeskScene = ({
   const columns = new Graphics()
   const labels = new Map<ColumnId, Text>()
   const cardViews = new Map<CardId, CardView>()
+  const inspectorView = createInspectorView()
 
-  const state = () => useGameStore.getState()
+  const stageElement = host.closest<HTMLElement>('.stage')
+
+  const syncInspectorHostState = () => {
+    const isOpen = isInspectorModalOpen()
+
+    host.classList.toggle('is-inspector-open', isOpen)
+    stageElement?.classList.toggle('is-inspector-open', isOpen)
+  }
 
   const renderScene = () => {
     if (!app || disposed) {
@@ -117,13 +141,6 @@ export const createDeskScene = ({
 
     app.render()
   }
-
-  const cardMotionLoop = createCardMotionLoop({
-    getCards: () => cardViews.values(),
-    getLayout: () => layout,
-    getPointer: () => pointer,
-    render: renderScene,
-  })
 
   const localPoint = (event: Pick<MouseEvent, 'clientX' | 'clientY'>): Vec2 => {
     const bounds = host.getBoundingClientRect()
@@ -136,17 +153,47 @@ export const createDeskScene = ({
 
   const isInspectorModalOpen = () => state().inspector !== null
 
-  const getCardSourceRect = (card: CardView) => {
-    const bounds = getPolygonBounds(card.hitPolygon)
-    const hostBounds = host.getBoundingClientRect()
+  const getInspectorCard = () => {
+    const inspector = state().inspector
 
-    return {
-      x: hostBounds.left + bounds.minX,
-      y: hostBounds.top + bounds.minY,
-      width: bounds.maxX - bounds.minX,
-      height: bounds.maxY - bounds.minY,
-    }
+    return inspector ? cardViews.get(inspector.cardId) ?? null : null
   }
+
+  const getLocalInspectorTarget = () => {
+    const targetRect = getInspectorTargetRect({
+      width: window.innerWidth,
+      height: window.innerHeight,
+      isMobile: window.matchMedia(INSPECTOR_MOBILE_QUERY).matches,
+    })
+
+    return toLocalInspectorTarget(targetRect, host.getBoundingClientRect())
+  }
+
+  const drawInspectorOverlay = () => {
+    const currentState = state()
+    const inspector = currentState.inspector
+    const card = inspector ? cardViews.get(inspector.cardId) ?? null : null
+    const details = getCardDetailModel(currentState, inspector?.cardId ?? null)
+
+    drawInspectorView(inspectorView, layout, card, details)
+  }
+
+  const renderAnimatedFrame = () => {
+    drawInspectorOverlay()
+    renderScene()
+  }
+
+  const drawCardFrame = (card: CardView) => {
+    drawCard(card, layout)
+    renderAnimatedFrame()
+  }
+
+  const cardMotionLoop = createCardMotionLoop({
+    getCards: () => cardViews.values(),
+    getLayout: () => layout,
+    getPointer: () => pointer,
+    render: renderAnimatedFrame,
+  })
 
   const syncColumnLabels = () => {
     syncColumnLabelRegistry(labels, boardLayer, state().columns)
@@ -181,9 +228,10 @@ export const createDeskScene = ({
     })
     cardViews.forEach((card) => {
       drawCard(card, layout)
-      card.root.visible = currentState.inspector?.cardId !== card.id
+      card.root.visible = true
       cardMotionLoop.remember(card)
     })
+    drawInspectorOverlay()
     renderScene()
   }
 
@@ -209,10 +257,7 @@ export const createDeskScene = ({
 
   const recreateLayout = () => {
     const size = getHostSize(host, layout)
-    const nextZoomMax = getWorkspaceZoomLimit(size.width, size.height, state(), {
-      surfaceRowsByColumn: rowMotion.growthMotion.columnRows,
-      slotRowsByColumn: rowMotion.getTargetRows(),
-    })
+    const nextZoomMax = getSceneZoomMax(size)
 
     if (Math.abs(nextZoomMax - viewport.zoomMax) > 0.001) {
       viewport.zoomMax = nextZoomMax
@@ -224,11 +269,7 @@ export const createDeskScene = ({
       onZoomChange?.(viewport.zoom)
     }
 
-    const makeLayout = (offset: Vec2) =>
-      createLayout(size.width, size.height, viewport.zoom, offset, state(), {
-        surfaceRowsByColumn: rowMotion.growthMotion.columnRows,
-        slotRowsByColumn: rowMotion.getTargetRows(),
-      })
+    const makeLayout = (offset: Vec2) => createSceneLayout(size, viewport.zoom, offset)
 
     let baseLayout = makeLayout(viewport.cameraOffset)
 
@@ -269,27 +310,46 @@ export const createDeskScene = ({
   const syncStoreState = () => {
     rowMotion.syncToRows(getColumnSlotCounts(state()))
 
-    const nextModalCardId = state().inspector?.cardId ?? null
+    const currentState = state()
+    const inspector = currentState.inspector
+    const nextInspectorCardId = inspector?.cardId ?? null
 
-    if (modalCardId && !nextModalCardId) {
-      const card = cardViews.get(modalCardId)
+    syncInspectorHostState()
 
-      if (card) {
-        card.root.visible = true
-        settleCard(card, layout, null)
-        cardMotionLoop.start()
+    if (inspector?.phase === 'closing') {
+      const card = cardViews.get(inspector.cardId)
+
+      if (card && card.phase !== 'inspector-returning') {
+        closeCardInspector(
+          card,
+          layout,
+          () => drawCardFrame(card),
+          () => {
+            const latestInspector = state().inspector
+
+            if (latestInspector?.cardId === card.id && latestInspector.phase === 'closing') {
+              useGameStore.getState().finishCloseCardInspector()
+            }
+          },
+        )
       }
     }
 
-    modalCardId = nextModalCardId
+    if (inspectorCardId && !nextInspectorCardId) {
+      const card = cardViews.get(inspectorCardId)
+
+      if (card && card.phase !== 'idle' && card.phase !== 'inspector-returning') {
+        resetCardToRest(card)
+        drawCardFrame(card)
+      }
+    }
+
+    inspectorCardId = nextInspectorCardId
   }
 
   const setZoom = (nextZoom: number) => {
     const size = getHostSize(host, layout)
-    const nextZoomMax = getWorkspaceZoomLimit(size.width, size.height, state(), {
-      surfaceRowsByColumn: rowMotion.growthMotion.columnRows,
-      slotRowsByColumn: rowMotion.getTargetRows(),
-    })
+    const nextZoomMax = getSceneZoomMax(size)
 
     if (Math.abs(nextZoomMax - viewport.zoomMax) > 0.001) {
       viewport.zoomMax = nextZoomMax
@@ -310,10 +370,7 @@ export const createDeskScene = ({
     }
     viewport.zoom = clampedZoom
     viewport.cameraOffset = fitCameraOffsetToWorkspace(
-      createLayout(size.width, size.height, viewport.zoom, viewport.cameraOffset, state(), {
-        surfaceRowsByColumn: rowMotion.growthMotion.columnRows,
-        slotRowsByColumn: rowMotion.getTargetRows(),
-      }),
+      createSceneLayout(size, viewport.zoom, viewport.cameraOffset),
       viewport.cameraOffset,
     )
     onZoomChange?.(clampedZoom)
@@ -352,22 +409,52 @@ export const createDeskScene = ({
     cardMotionLoop.start()
   }
 
+  const openInspectorFromCard = (card: CardView) => {
+    const localTarget = getLocalInspectorTarget()
+
+    setHoveredCard(null)
+    useGameStore.getState().openCardInspector(card.id)
+    openCardInspector(
+      card,
+      layout,
+      localTarget,
+      () => drawCardFrame(card),
+      () => {
+        if (disposed) return
+
+        const inspector = state().inspector
+        if (inspector?.cardId !== card.id || inspector.phase !== 'opening') {
+          return
+        }
+
+        useGameStore.getState().completeCardInspectorOpen()
+        renderAnimatedFrame()
+      },
+    )
+  }
+
   const handlePointerDown = (event: PointerEvent) => {
     if (event.button !== 0) {
       return
     }
 
+    const point = localPoint(event)
+
     if (isInspectorModalOpen()) {
+      const inspector = state().inspector
+
+      if (inspector?.phase === 'open' && !isPointInsideInspectorShell(point, getInspectorCard())) {
+        useGameStore.getState().requestCloseCardInspector()
+      }
+
       event.preventDefault()
       return
     }
 
-    const point = localPoint(event)
     const infoCard = hitCardInfoIcon(cardViews.values(), point)
 
     if (infoCard) {
-      setHoveredCard(null)
-      useGameStore.getState().openCardInspector(infoCard.id, getCardSourceRect(infoCard))
+      openInspectorFromCard(infoCard)
       event.preventDefault()
       return
     }
@@ -522,9 +609,12 @@ export const createDeskScene = ({
     columns.zIndex = 10
     boardLayer.zIndex = 0
     cardLayer.zIndex = 100
+    inspectorView.backdrop.zIndex = 95_000
+    inspectorView.content.zIndex = 110
     boardLayer.addChild(board, columns)
     cardLayer.sortableChildren = true
-    app.stage.addChild(boardLayer, cardLayer)
+    cardLayer.addChild(inspectorView.backdrop)
+    app.stage.addChild(boardLayer, cardLayer, inspectorView.content)
     host.appendChild(app.canvas)
     syncAndRedraw()
   }
@@ -557,9 +647,11 @@ export const createDeskScene = ({
       host.removeEventListener('pointercancel', handlePointerUp)
       host.removeEventListener('pointerleave', handlePointerLeave)
       host.removeEventListener('wheel', handleWheel)
-      host.classList.remove('is-dragging', 'is-hovering-card', 'is-panning', 'is-pan-enabled')
+      host.classList.remove('is-dragging', 'is-hovering-card', 'is-panning', 'is-pan-enabled', 'is-inspector-open')
+      stageElement?.classList.remove('is-inspector-open')
       destroyCardViews(cardViews)
       destroyColumnLabels(labels)
+      destroyInspectorView(inspectorView)
       useGameStore.getState().finishCloseCardInspector()
 
       if (app) {

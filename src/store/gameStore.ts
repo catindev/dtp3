@@ -3,22 +3,17 @@ import { initialBoardState } from '../engine/model/boardState'
 import { getColumnIdForCard, moveCardToColumn, moveCardToSlot } from '../engine/model/placementRules'
 import type { BoardState, CardId, ColumnId, SlotId } from '../engine/model/boardTypes'
 
-export type InspectorSourceRect = {
-  x: number
-  y: number
-  width: number
-  height: number
-}
+export type CardInspectorPhase = 'opening' | 'open' | 'closing'
 
 export type CardInspectorState = {
   cardId: CardId
-  sourceRect: InspectorSourceRect
-  isClosing: boolean
+  phase: CardInspectorPhase
 }
 
 type GameStore = BoardState & {
   inspector: CardInspectorState | null
-  openCardInspector: (cardId: CardId, sourceRect: InspectorSourceRect) => void
+  openCardInspector: (cardId: CardId) => void
+  completeCardInspectorOpen: () => void
   requestCloseCardInspector: () => void
   finishCloseCardInspector: () => void
   beginDrag: (cardId: CardId, sourceSlotId: SlotId) => void
@@ -30,25 +25,38 @@ type GameStore = BoardState & {
 export const useGameStore = create<GameStore>((set, get) => ({
   ...initialBoardState,
   inspector: null,
-  openCardInspector: (cardId, sourceRect) => {
+  openCardInspector: (cardId) => {
     set({
       inspector: {
         cardId,
-        sourceRect,
-        isClosing: false,
+        phase: 'opening',
       },
     })
   },
-  requestCloseCardInspector: () => {
+  completeCardInspectorOpen: () => {
     set((state) => {
-      if (!state.inspector || state.inspector.isClosing) {
+      if (!state.inspector || state.inspector.phase !== 'opening') {
         return state
       }
 
       return {
         inspector: {
           ...state.inspector,
-          isClosing: true,
+          phase: 'open',
+        },
+      }
+    })
+  },
+  requestCloseCardInspector: () => {
+    set((state) => {
+      if (!state.inspector || state.inspector.phase !== 'open') {
+        return state
+      }
+
+      return {
+        inspector: {
+          ...state.inspector,
+          phase: 'closing',
         },
       }
     })

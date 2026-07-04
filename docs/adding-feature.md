@@ -11,6 +11,7 @@ Use this checklist when starting a new chat or adding a feature.
 - Card labels, colors, codes, risk text, or modal detail derivation: `src/engine/model/cardPresentation.ts` and `src/engine/model/cardDetails.ts`.
 - Board/card size or color: `src/engine/model/gameConstants.ts`.
 - Projection or slot geometry: `src/engine/layout`.
+- Camera composition, top reserved header space, and workspace fit margins: `src/engine/layout/viewportConfig.ts`.
 - Pixi scene orchestration, event wiring, and store subscription: `src/engine/render/createDeskScene.ts`.
 - Runtime camera/zoom state: `src/engine/render/sceneViewport.ts`.
 - Runtime slot-row growth/shrink and removed-slot collapse execution: `src/engine/render/sceneRowMotion.ts`.
@@ -18,10 +19,12 @@ Use this checklist when starting a new chat or adding a feature.
 - Card rest-position sync and compacted-slot hop behavior: `src/engine/render/sceneCardLayout.ts`.
 - Drawing details: `src/engine/render/boardRenderer.ts` or `src/engine/render/cardView.ts`.
 - Per-frame card redraw scheduling: `src/engine/render/cardMotionLoop.ts`.
-- Screen-space card detail UI: `src/components/card-inspector`.
+- Screen-space card detail UI: `src/engine/render/inspectorRenderer.ts`.
+- Screen-space card detail modal geometry: `src/engine/render/inspectorLayout.ts`.
 - Card title fitting or truncation: `src/engine/render/cardTypography.ts`.
 - Drag physics or GSAP landing: `src/engine/animation/cardMotion.ts`.
 - Card hover/held highlight timing: `src/engine/animation/cardMotion.ts`.
+- Card-to-inspector transform: `src/engine/animation/cardMotion.ts`, `src/engine/render/cardView.ts`, and `src/engine/render/inspectorRenderer.ts`.
 - Hit testing or allowed drop areas: `src/engine/interaction/hitTest.ts`.
 - Reusable React overlay spring/popup motion: `src/styles/motion.css`.
 
@@ -48,7 +51,7 @@ For drag changes, manually check:
 - accepted drop lands into a slot;
 - rejected drop returns to the source slot;
 - zoom still works within configured min/max.
-- info-icon inspector opens as a modal from the card, blocks the desk, and closes back to the source card.
+- info-icon inspector opens as a Pixi modal, blocks the desk, and closes by transforming back into the same card.
 
 ## 5. Verify
 

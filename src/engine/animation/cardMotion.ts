@@ -2,6 +2,7 @@ import { gsap } from 'gsap'
 import type { ColumnId } from '../model/boardTypes'
 import type { SceneLayout } from '../layout/boardLayout'
 import { clamp, lerp } from '../math/easing'
+import { CARD_SIZE } from '../model/gameConstants'
 import type { CardView } from '../render/cardView'
 
 export type PointerTracker = {
@@ -13,8 +14,47 @@ export type PointerTracker = {
   vy: number
 }
 
+export type InspectorShellTarget = {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+const getLiftedCardSize = (layout: SceneLayout) => ({
+  width: (CARD_SIZE.width + 8) * layout.scale,
+  height: (CARD_SIZE.height + 28) * layout.scale,
+})
+
+const resetInspectorMotion = (card: CardView, contentAlpha = 1) => {
+  card.motion.contentAlpha = contentAlpha
+  card.motion.detailAlpha = 0
+  card.motion.backdropAlpha = 0
+  card.motion.inspectorWidth = 0
+  card.motion.inspectorHeight = 0
+}
+
+const setCardAtRest = (card: CardView) => {
+  card.phase = 'idle'
+  card.flight = null
+  card.x = card.restX
+  card.y = card.restY
+  card.rotation = 0
+  card.tiltVelocity = 0
+  card.motion.lift = 0
+  card.motion.fly = 1
+  card.motion.impact = 0
+  resetInspectorMotion(card)
+}
+
 export const clearCardTweens = (card: CardView) => {
+  gsap.killTweensOf(card)
   gsap.killTweensOf(card.motion)
+}
+
+export const resetCardToRest = (card: CardView) => {
+  clearCardTweens(card)
+  setCardAtRest(card)
 }
 
 export const setCardHover = (card: CardView, isHovered: boolean) => {
@@ -37,6 +77,120 @@ export const liftCard = (card: CardView) => {
   })
 }
 
+export const openCardInspector = (
+  card: CardView,
+  layout: SceneLayout,
+  target: InspectorShellTarget,
+  onUpdate: () => void,
+  onComplete: () => void,
+) => {
+  const liftedSize = getLiftedCardSize(layout)
+
+  clearCardTweens(card)
+  card.phase = 'inspector-opening'
+  card.flight = null
+  card.rotation = 0
+  card.tiltVelocity = 0
+  card.targetRotation = 0
+  card.motion.fly = 1
+  card.motion.impact = 0
+  card.motion.lift = 0
+  card.motion.contentAlpha = 1
+  card.motion.detailAlpha = 0
+  card.motion.backdropAlpha = 0
+  card.motion.inspectorWidth = liftedSize.width
+  card.motion.inspectorHeight = liftedSize.height
+  card.root.visible = true
+
+  gsap
+    .timeline({
+      onUpdate,
+      onComplete: () => {
+        card.phase = 'inspector-open'
+        card.x = target.x
+        card.y = target.y
+        card.rotation = 0
+        card.motion.lift = 1
+        card.motion.contentAlpha = 0
+        card.motion.detailAlpha = 1
+        card.motion.backdropAlpha = 1
+        card.motion.inspectorWidth = target.width
+        card.motion.inspectorHeight = target.height
+        onUpdate()
+        onComplete()
+      },
+    })
+    .to(card.motion, { contentAlpha: 0, duration: 0.16, ease: 'power2.out' }, 0)
+    .to(card.motion, { backdropAlpha: 1, duration: 0.28, ease: 'power2.out' }, 0)
+    .to(card, { x: target.x, y: target.y, rotation: 0, duration: 0.58, ease: 'power3.inOut' }, 0.05)
+    .to(
+      card.motion,
+      {
+        lift: 1,
+        inspectorWidth: target.width,
+        inspectorHeight: target.height,
+        duration: 0.58,
+        ease: 'power3.inOut',
+      },
+      0.05,
+    )
+    .to(card.motion, { impact: 0.12, duration: 0.08, yoyo: true, repeat: 1, ease: 'power2.out' }, 0.5)
+    .to(card.motion, { detailAlpha: 1, duration: 0.18, ease: 'power2.out' }, 0.5)
+}
+
+export const closeCardInspector = (
+  card: CardView,
+  layout: SceneLayout,
+  onUpdate: () => void,
+  onComplete: () => void,
+) => {
+  const liftedSize = getLiftedCardSize(layout)
+
+  clearCardTweens(card)
+  card.phase = 'inspector-returning'
+  card.flight = null
+  card.root.visible = true
+  card.motion.fly = 1
+  card.motion.impact = 0
+  card.motion.lift = 1
+  card.motion.contentAlpha = 0
+  card.motion.detailAlpha = 1
+  card.motion.backdropAlpha = 1
+  card.targetRotation = 0
+
+  if (card.motion.inspectorWidth <= 0 || card.motion.inspectorHeight <= 0) {
+    card.motion.inspectorWidth = liftedSize.width
+    card.motion.inspectorHeight = liftedSize.height
+  }
+
+  gsap
+    .timeline({
+      onUpdate,
+      onComplete: () => {
+        setCardAtRest(card)
+        onUpdate()
+        onComplete()
+      },
+    })
+    .to(card.motion, { detailAlpha: 0, duration: 0.12, ease: 'power2.in' }, 0)
+    .to(card.motion, { inspectorWidth: liftedSize.width, inspectorHeight: liftedSize.height, duration: 0.16, ease: 'power2.in' }, 0)
+    .to(
+      card,
+      {
+        x: card.restX,
+        y: card.restY,
+        rotation: 0,
+        duration: 0.56,
+        ease: 'back.out(1.12)',
+      },
+      0.06,
+    )
+    .to(card.motion, { lift: 0, duration: 0.56, ease: 'back.out(1.12)' }, 0.06)
+    .to(card.motion, { backdropAlpha: 0, duration: 0.36, ease: 'power2.in' }, 0.18)
+    .to(card.motion, { contentAlpha: 1, duration: 0.18, ease: 'power2.out' }, 0.42)
+    .to(card.motion, { impact: 1, duration: 0.08, yoyo: true, repeat: 1, ease: 'power2.out' }, 0.48)
+}
+
 export const settleCard = (card: CardView, layout: SceneLayout, targetColumnId: ColumnId | null) => {
   clearCardTweens(card)
   card.phase = 'landing'
@@ -49,6 +203,7 @@ export const settleCard = (card: CardView, layout: SceneLayout, targetColumnId: 
   }
   card.motion.fly = 0
   card.motion.impact = 0
+  resetInspectorMotion(card)
   card.targetRotation = 0
 
   gsap.to(card.motion, {
@@ -57,12 +212,7 @@ export const settleCard = (card: CardView, layout: SceneLayout, targetColumnId: 
     duration: targetColumnId ? 0.42 : 0.56,
     ease: targetColumnId ? 'power3.out' : 'back.out(1.15)',
     onComplete: () => {
-      card.phase = 'idle'
-      card.flight = null
-      card.x = card.restX
-      card.y = card.restY
-      card.rotation = 0
-      card.tiltVelocity = 0
+      setCardAtRest(card)
     },
   })
   gsap.to(card.motion, {
@@ -90,6 +240,7 @@ export const hopCardToRest = (card: CardView, layout: SceneLayout) => {
   }
   card.motion.fly = 0
   card.motion.impact = 0
+  resetInspectorMotion(card)
   card.targetRotation = 0
 
   gsap.to(card.motion, {
@@ -97,12 +248,7 @@ export const hopCardToRest = (card: CardView, layout: SceneLayout) => {
     duration: 0.34,
     ease: 'power2.out',
     onComplete: () => {
-      card.phase = 'idle'
-      card.flight = null
-      card.x = card.restX
-      card.y = card.restY
-      card.rotation = 0
-      card.tiltVelocity = 0
+      setCardAtRest(card)
     },
   })
   gsap.to(card.motion, {
@@ -131,7 +277,14 @@ export const updateCardMotion = (card: CardView, pointer: PointerTracker, layout
     card.visual.hoverVelocity = 0
   }
 
-  if (card.phase === 'held') {
+  if (
+    card.phase === 'inspector-opening' ||
+    card.phase === 'inspector-open' ||
+    card.phase === 'inspector-returning'
+  ) {
+    card.tiltVelocity *= Math.pow(0.58, delta)
+    card.rotation = lerp(card.rotation, 0, 0.24 * delta)
+  } else if (card.phase === 'held') {
     const targetX = pointer.x + card.dragOffset.x
     const targetY = pointer.y + card.dragOffset.y - 18 * layout.scale * card.motion.lift
     const follow = 1 - Math.pow(0.001, delta / 10)

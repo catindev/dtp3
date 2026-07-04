@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react'
 import { createDeskScene, type DeskSceneController } from '../engine/render/createDeskScene'
-import { CardInspector } from './card-inspector'
 
 export function IsometricDesk() {
   const hostRef = useRef<HTMLDivElement | null>(null)
@@ -29,7 +28,6 @@ export function IsometricDesk() {
   return (
     <div className="desk-frame">
       <div ref={hostRef} className="desk-canvas" aria-label="Stacksy board concept" />
-      <CardInspector />
     </div>
   )
 }

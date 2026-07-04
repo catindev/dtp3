@@ -30,6 +30,11 @@ const getCardRenderKey = (card: CardView) =>
     quantize(card.motion.lift),
     quantize(card.motion.fly),
     quantize(card.motion.impact),
+    quantize(card.motion.contentAlpha),
+    quantize(card.motion.detailAlpha),
+    quantize(card.motion.backdropAlpha),
+    quantize(card.motion.inspectorWidth),
+    quantize(card.motion.inspectorHeight),
     quantize(card.visual.hover),
     quantize(card.visual.hoverTarget),
   ].join('|')
@@ -41,6 +46,10 @@ const hasUnsettledCardMotion = (cards: Iterable<CardView>) => {
     }
 
     if (card.phase === 'landing') {
+      return true
+    }
+
+    if (card.phase === 'inspector-opening' || card.phase === 'inspector-returning') {
       return true
     }
 

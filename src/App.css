@@ -61,6 +61,10 @@
   padding: 0;
 }
 
+.stage.is-inspector-open {
+  z-index: 5;
+}
+
 .debug-overlay {
   position: absolute;
   left: 14px;

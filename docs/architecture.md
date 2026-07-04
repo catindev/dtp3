@@ -5,14 +5,12 @@ The prototype is split into engine layers so the board can evolve into a game-li
 ## Layers
 
 - React: `src/components`
-  - `IsometricDesk.tsx` mounts the Pixi scene and places screen-space overlays.
-  - `card-inspector/*` renders selected-card details as modal screen-space UI, not as board geometry.
-  - Modal overlays can block tabletop input, but overlay size must not become board geometry.
+  - `IsometricDesk.tsx` mounts the Pixi scene.
   - React does not know placement rules or projection math.
 
 - Store: `src/store/gameStore.ts`
   - Holds cards, columns, placements, and drag state.
-  - Holds UI-facing state that is derived from engine interaction, such as the modal inspector card id, source rectangle, and closing phase.
+  - Holds UI-facing state that is derived from engine interaction, such as the modal inspector card id and transition phase.
   - Exposes actions for drag lifecycle and card movement.
 
 - Model: `src/engine/model`
@@ -20,12 +18,13 @@ The prototype is split into engine layers so the board can evolve into a game-li
   - `gameConstants.ts`: board geometry, card size, zoom bounds, colors.
   - `boardState.ts`: initial state.
   - `cardPresentation.ts`: labels, colors, codes, and risk summaries derived from card data.
-  - `cardDetails.ts`: pure card-detail view model used by the React modal.
+  - `cardDetails.ts`: pure card-detail view model used by the Pixi inspector.
   - `placementRules.ts`: slot parsing, visible row count, free slot lookup, card moves.
 
 - Layout: `src/engine/layout`
   - Converts board coordinates to screen coordinates.
   - Computes desk, column, slot, and card-rest geometry.
+  - `viewportConfig.ts`: camera composition, edge margins, workspace fit margins, and the reserved top band for the future game header.
 
 - Effects: `src/engine/effects`
   - Converts model changes into renderer-agnostic effect plans.
@@ -38,9 +37,11 @@ The prototype is split into engine layers so the board can evolve into a game-li
   - `sceneViewport.ts`: owns zoom and camera offset.
   - `sceneEntities.ts`: syncs Pixi labels/card views with model state and destroys stale Pixi objects.
   - `sceneCardLayout.ts`: applies model placements to card rest poses and starts card hop motion when compacted slots move.
+  - `inspectorLayout.ts`: screen-space modal target sizing, host-local conversion, and modal-shell hit testing.
   - `cardMotionLoop.ts`: requestAnimationFrame loop for card dirty-checking and physical motion updates.
   - `boardRenderer.ts`: desk, columns, labels, empty slots.
   - `cardView.ts`: card graphics, card text, shadows, hit polygons.
+  - `inspectorRenderer.ts`: Pixi screen-space inspector content and backdrop drawn over the transformed card shell.
   - `cardTypography.ts`: title line fitting and two-line ellipsis for card text.
   - `textTransform.ts`: surface-aligned Pixi text transforms.
   - `pixiPrimitives.ts`: reusable polygon drawing and polygon scaling helpers.
@@ -53,6 +54,7 @@ The prototype is split into engine layers so the board can evolve into a game-li
   - GSAP lift/landing tweens.
   - Per-frame physical drag response.
   - Hover/held visual state tweens for cards.
+  - Pixi-card inspector tweens that transform a tabletop card into a screen-space modal shell and back.
 
 - UI Motion: `src/styles/motion.css`
   - Reusable CSS spring primitives for React overlays and interface elements.
@@ -65,7 +67,6 @@ React can depend on render scene APIs. Render can depend on layout, model, inter
 ```mermaid
 flowchart LR
   React["React component"] --> Scene["createDeskScene"]
-  React --> Details["cardDetails"]
   Scene --> Store["Zustand store"]
   Scene --> Render["Render helpers"]
   Scene --> Interaction["Interaction helpers"]
@@ -76,15 +77,18 @@ flowchart LR
   Effects --> Model
   Layout --> Model["Model/constants"]
   Store --> Model
-  Details --> Model
   Animation --> Render
 ```
 
 ## Current Composition
 
-The card inspector is a React modal overlay rendered through a portal to `document.body`. It must not be included in `getDeskWidth`, `deskPolygon`, `workspacePolygon`, or any Pixi board layout. If a future feature needs a real object on the tabletop, model it as board geometry separately from modal components.
+The board reserves a top screen band through `src/engine/layout/viewportConfig.ts`. This reserve is part of zoom-limit and camera-fit math, so maximum zoom keeps the playable columns below the future header area instead of visually offsetting the desk after layout.
 
-When the player clicks a card info icon, the scene stores the card id plus its screen-space source rectangle. React uses that source rectangle to animate a centered modal from the card. While the modal is active, the original Pixi card is hidden and the backdrop blocks tabletop input. When the modal closes, the store clears the inspector state and the scene plays a small landing slap on the original card.
+The card inspector is a Pixi screen-space modal. It is drawn over the board by `inspectorRenderer.ts`, but it must not be included in `getDeskWidth`, `deskPolygon`, `workspacePolygon`, or any board layout calculation. If a future feature needs a real object on the tabletop, model it as board geometry separately from modal UI.
+
+When the player clicks a card info icon, the same Pixi card hides its tabletop text, lifts, interpolates from board perspective to a centered rectangle, grows into the inspector shell, and then reveals inspector content. The backdrop is another Pixi layer that blocks tabletop input while the modal is open.
+
+When the modal closes, Pixi hides the inspector content, morphs the shell back toward the lifted card shape, returns it to its slot, restores card text, and only then clears the store inspector state.
 
 ## Refactor Boundaries
 
