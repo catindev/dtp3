@@ -6,16 +6,20 @@ The prototype is split into engine layers so the board can evolve into a game-li
 
 - React: `src/components`
   - `IsometricDesk.tsx` mounts the Pixi scene.
+  - `GameTicker.tsx` advances the game clock on a fixed interval.
+  - `GameClock.tsx` renders the screen-space time HUD from SVG digit assets.
   - React does not know placement rules or projection math.
 
 - Store: `src/store/gameStore.ts`
   - Holds cards, columns, placements, and drag state.
+  - Holds the game clock and exposes the tick action.
   - Holds UI-facing state that is derived from engine interaction, such as the modal inspector card id and transition phase.
   - Exposes actions for drag lifecycle and card movement.
 
 - Model: `src/engine/model`
   - `boardTypes.ts`: stable domain types.
   - `gameConstants.ts`: board geometry, card size, zoom bounds, colors.
+  - `gameClock.ts`: pure game-time state, tick duration, day bounds, and time formatting.
   - `boardState.ts`: initial state.
   - `cardPresentation.ts`: labels, colors, codes, and risk summaries derived from card data.
   - `cardDetails.ts`: pure card-detail view model used by the Pixi inspector.
@@ -83,6 +87,8 @@ flowchart LR
 ## Current Composition
 
 The board reserves a top screen band through `src/engine/layout/viewportConfig.ts`. This reserve is part of zoom-limit and camera-fit math, so maximum zoom keeps the playable columns below the future header area instead of visually offsetting the desk after layout.
+
+The game clock is deliberately separate from the Pixi board scene. `GameTicker.tsx` updates `state.clock` every `GAME_TICK_MS`, while `createDeskScene.ts` only syncs when board-relevant store slices change. Do not route clock-only updates through Pixi scene synchronization unless a future board visual explicitly depends on time.
 
 The card inspector is a Pixi screen-space modal. It is drawn over the board by `inspectorRenderer.ts`, but it must not be included in `getDeskWidth`, `deskPolygon`, `workspacePolygon`, or any board layout calculation. If a future feature needs a real object on the tabletop, model it as board geometry separately from modal UI.
 

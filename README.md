@@ -2,7 +2,7 @@
 
 Interactive React + TypeScript prototype for a game-like tabletop card board.
 
-The board is rendered with PixiJS. React owns the app shell and screen-space HUD such as the card inspector. Zustand owns game state. GSAP drives card and board motion.
+The board and card inspector are rendered with PixiJS. React owns the app shell and lightweight HUD, such as the game clock and debug overlay. Zustand owns game state. GSAP drives card, board, and inspector motion.
 
 ## Stack
 
@@ -23,10 +23,11 @@ npm run lint
 
 ## Project Map
 
-- `src/components/IsometricDesk.tsx`: mounts the Pixi desk scene and renders screen-space overlays.
-- `src/components/card-inspector`: React HUD for hovered-card details.
+- `src/components/IsometricDesk.tsx`: mounts the Pixi desk scene.
+- `src/components/GameTicker.tsx`: advances the game clock on a fixed interval.
+- `src/components/GameClock.tsx`: renders the clock HUD with SVG digit assets.
 - `src/store/gameStore.ts`: Zustand state and actions.
-- `src/engine/model`: board types, initial state, card presentation data, card detail view models, placement rules.
+- `src/engine/model`: board types, initial state, game clock, card presentation data, card detail view models, placement rules.
 - `src/engine/layout`: board-space projection and camera fitting.
 - `src/engine/render`: Pixi lifecycle and drawing.
 - `src/engine/animation`: GSAP tweens and physical card motion.

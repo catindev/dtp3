@@ -40,7 +40,7 @@ type BoardCard = {
 }
 ```
 
-Keep values in the `0..100` range unless a future rule explicitly changes the scale. Presentation labels, colors, card codes, and risk summaries live in `src/engine/model/cardPresentation.ts`. The React inspector consumes `src/engine/model/cardDetails.ts` instead of deriving display text ad hoc.
+Keep values in the `0..100` range unless a future rule explicitly changes the scale. Presentation labels, colors, card codes, and risk summaries live in `src/engine/model/cardPresentation.ts`. The Pixi inspector consumes `src/engine/model/cardDetails.ts` instead of deriving display text ad hoc.
 
 Each column shows exactly one playable empty slot after its last card.
 
@@ -93,10 +93,22 @@ Current drag rules:
 
 Use `moveCardToColumn` or `moveCardToSlot` for moves. Do not mutate `state.placements` outside placement rules or store actions.
 
+## Game Time
+
+The game clock lives in `src/engine/model/gameClock.ts`.
+
+- One real-time tick runs every `500ms`.
+- Each tick advances the game clock by one in-game minute.
+- A day starts at `08:00` and ends at `18:00`.
+- Advancing past `18:00` starts the next day at `08:00`.
+
+React starts the fixed interval through `GameTicker.tsx`, and `GameClock.tsx` renders the HUD using SVG digit assets. Pixi scene synchronization ignores clock-only store changes.
+
 ## Future Rule Hooks
 
 Likely next additions:
 
+- deadline and pressure changes on game ticks;
 - drop into a specific slot, not only first free slot;
 - blocked slots;
 - card type constraints;

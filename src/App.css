@@ -53,6 +53,50 @@
   height: auto;
 }
 
+.game-clock {
+  position: absolute;
+  top: 58px;
+  right: clamp(32px, 7vw, 96px);
+  z-index: 4;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  color: #33291b;
+  pointer-events: none;
+  user-select: none;
+}
+
+.game-clock__time {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  line-height: 0;
+}
+
+.game-clock__digit,
+.game-clock__delimiter {
+  display: block;
+  width: auto;
+  flex: 0 0 auto;
+}
+
+.game-clock__digit {
+  height: 42px;
+}
+
+.game-clock__delimiter {
+  height: 38px;
+  margin-inline: 1px;
+}
+
+.game-clock__day {
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0;
+  color: rgba(51, 41, 27, 0.86);
+}
+
 .stage {
   position: fixed;
   inset: 0;
@@ -122,6 +166,13 @@
 }
 
 @media (max-width: 760px) {
+  .game-clock {
+    top: 18px;
+    right: 16px;
+    transform: scale(0.72);
+    transform-origin: top right;
+  }
+
   .desk-canvas {
     height: 100svh;
     min-height: 0;

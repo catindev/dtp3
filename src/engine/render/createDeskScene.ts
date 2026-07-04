@@ -63,12 +63,21 @@ type CameraPan = {
   startPoint: Vec2
 }
 
+type GameStoreState = ReturnType<typeof useGameStore.getState>
+
 const getHostSize = (host: HTMLDivElement, fallback?: SceneLayout) => ({
   width: host.clientWidth || fallback?.width || 960,
   height: host.clientHeight || fallback?.height || 640,
 })
 
 const PIXI_RESOLUTION_LIMIT = 1.5
+
+const shouldSyncDeskSceneState = (nextState: GameStoreState, previousState: GameStoreState) =>
+  nextState.cards !== previousState.cards ||
+  nextState.columns !== previousState.columns ||
+  nextState.placements !== previousState.placements ||
+  nextState.drag !== previousState.drag ||
+  nextState.inspector !== previousState.inspector
 
 const loadSceneFonts = async () => {
   if (!document.fonts) {
@@ -620,7 +629,11 @@ export const createDeskScene = ({
   }
 
   const resizeObserver = new ResizeObserver(syncAndRedraw)
-  const unsubscribe = useGameStore.subscribe(syncStoreState)
+  const unsubscribe = useGameStore.subscribe((nextState, previousState) => {
+    if (shouldSyncDeskSceneState(nextState, previousState)) {
+      syncStoreState()
+    }
+  })
 
   resizeObserver.observe(host)
   host.addEventListener('pointerdown', handlePointerDown)

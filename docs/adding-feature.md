@@ -7,6 +7,8 @@ Use this checklist when starting a new chat or adding a feature.
 - Game rule or placement behavior: `src/engine/model/placementRules.ts`.
 - State transition side effects such as slot collapse or board growth order: `src/engine/effects`.
 - New state or action: `src/store/gameStore.ts`.
+- Game-time rules, day bounds, or tick formatting: `src/engine/model/gameClock.ts`.
+- Game-clock HUD or fixed interval wiring: `src/components/GameClock.tsx` and `src/components/GameTicker.tsx`.
 - New card data fields: `src/engine/model/boardTypes.ts` and `src/engine/model/boardState.ts`.
 - Card labels, colors, codes, risk text, or modal detail derivation: `src/engine/model/cardPresentation.ts` and `src/engine/model/cardDetails.ts`.
 - Board/card size or color: `src/engine/model/gameConstants.ts`.
@@ -52,6 +54,12 @@ For drag changes, manually check:
 - rejected drop returns to the source slot;
 - zoom still works within configured min/max.
 - info-icon inspector opens as a Pixi modal, blocks the desk, and closes by transforming back into the same card.
+
+For time changes, manually check:
+
+- the clock advances without dragging or redrawing the desk;
+- day rollover happens after `18:00`;
+- HUD clock assets do not block pointer events on the board.
 
 ## 5. Verify
 

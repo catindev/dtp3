@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { initialBoardState } from '../engine/model/boardState'
+import { advanceGameClock, initialGameClock, type GameClockState } from '../engine/model/gameClock'
 import { getColumnIdForCard, moveCardToColumn, moveCardToSlot } from '../engine/model/placementRules'
 import type { BoardState, CardId, ColumnId, SlotId } from '../engine/model/boardTypes'
 
@@ -11,7 +12,9 @@ export type CardInspectorState = {
 }
 
 type GameStore = BoardState & {
+  clock: GameClockState
   inspector: CardInspectorState | null
+  advanceGameTick: () => void
   openCardInspector: (cardId: CardId) => void
   completeCardInspectorOpen: () => void
   requestCloseCardInspector: () => void
@@ -24,7 +27,13 @@ type GameStore = BoardState & {
 
 export const useGameStore = create<GameStore>((set, get) => ({
   ...initialBoardState,
+  clock: initialGameClock,
   inspector: null,
+  advanceGameTick: () => {
+    set((state) => ({
+      clock: advanceGameClock(state.clock),
+    }))
+  },
   openCardInspector: (cardId) => {
     set({
       inspector: {
