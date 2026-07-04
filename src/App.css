@@ -69,7 +69,7 @@
 .game-clock__time {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 2px;
   line-height: 0;
 }
 
@@ -86,7 +86,6 @@
 
 .game-clock__delimiter {
   height: 38px;
-  margin-inline: 1px;
 }
 
 .game-clock__day {

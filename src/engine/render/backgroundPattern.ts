@@ -1,11 +1,11 @@
 import { BOARD_GEOMETRY } from '../model/gameConstants'
 
 export const BACKGROUND_BASE_COLOR = '#e9e1ce'
-export const BACKGROUND_DPR_LIMIT = 0.9
-export const BACKGROUND_FRAME_INTERVAL_MS = 0
+export const BACKGROUND_DPR_LIMIT = 0.6
+export const BACKGROUND_FRAME_INTERVAL_MS = 1000 / 20
 
-const SHAPE_CELL_WIDTH = 126
-const SHAPE_CELL_HEIGHT = 118
+const SHAPE_CELL_WIDTH = 220
+const SHAPE_CELL_HEIGHT = 202
 const LINE_COLORS = [
   'rgba(122, 104, 76, 0.09)',
   'rgba(95, 80, 57, 0.07)',
@@ -172,8 +172,8 @@ export const createBackgroundPattern = (width: number, height: number): Backgrou
     surfaceWidth: width * 1.62,
     surfaceDepth: (height * 1.32) / BOARD_GEOMETRY.frontTiltY,
   }
-  const rows = Math.ceil(projection.surfaceDepth / SHAPE_CELL_HEIGHT) + 5
-  const cols = Math.ceil(projection.surfaceWidth / SHAPE_CELL_WIDTH) + 8
+  const rows = Math.ceil(projection.surfaceDepth / SHAPE_CELL_HEIGHT) + 4
+  const cols = Math.ceil(projection.surfaceWidth / SHAPE_CELL_WIDTH) + 6
   const cells: BackgroundCell[] = []
 
   for (let row = 0; row < rows; row += 1) {

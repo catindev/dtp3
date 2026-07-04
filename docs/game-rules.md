@@ -97,12 +97,12 @@ Use `moveCardToColumn` or `moveCardToSlot` for moves. Do not mutate `state.place
 
 The game clock lives in `src/engine/model/gameClock.ts`.
 
-- One real-time tick runs every `500ms`.
+- One real-time tick runs every `1000ms`.
 - Each tick advances the game clock by one in-game minute.
 - A day starts at `08:00` and ends at `18:00`.
 - Advancing past `18:00` starts the next day at `08:00`.
 
-React starts the fixed interval through `GameTicker.tsx`, and `GameClock.tsx` renders the HUD using SVG digit assets. Pixi scene synchronization ignores clock-only store changes.
+React mounts the fixed interval through `GameTicker.tsx`, `src/engine/time/gameTicker.ts` owns the runtime ticker, and `GameClock.tsx` renders the HUD using SVG digit assets. Pixi scene synchronization ignores clock-only store changes.
 
 ## Future Rule Hooks
 

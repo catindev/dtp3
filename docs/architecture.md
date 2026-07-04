@@ -6,7 +6,9 @@ The prototype is split into engine layers so the board can evolve into a game-li
 
 - React: `src/components`
   - `IsometricDesk.tsx` mounts the Pixi scene.
-  - `GameTicker.tsx` advances the game clock on a fixed interval.
+  - `AbstractBackground.tsx` mounts the animated background controller.
+  - `GameTicker.tsx` mounts the game-time ticker.
+  - `DebugOverlay.tsx` mounts the FPS meter.
   - `GameClock.tsx` renders the screen-space time HUD from SVG digit assets.
   - React does not know placement rules or projection math.
 
@@ -25,6 +27,14 @@ The prototype is split into engine layers so the board can evolve into a game-li
   - `cardDetails.ts`: pure card-detail view model used by the Pixi inspector.
   - `placementRules.ts`: slot parsing, visible row count, free slot lookup, card moves.
 
+- Time: `src/engine/time`
+  - Owns reusable runtime time controllers.
+  - `gameTicker.ts`: fixed interval controller for game ticks.
+
+- Performance: `src/engine/performance`
+  - Owns measurement controllers.
+  - `fpsMeter.ts`: requestAnimationFrame FPS sampler for the debug overlay.
+
 - Layout: `src/engine/layout`
   - Converts board coordinates to screen coordinates.
   - Computes desk, column, slot, and card-rest geometry.
@@ -35,6 +45,8 @@ The prototype is split into engine layers so the board can evolve into a game-li
   - `boardRowEffects.ts`: compares previous/next row counts, lists removed slots, and decides which board height motion runs immediately vs after slot collapse.
 
 - Render: `src/engine/render`
+  - `animatedBackground.ts`: canvas lifecycle for the animated page background.
+  - `backgroundPattern.ts`: generated background pattern geometry and drawing.
   - `createDeskScene.ts`: Pixi lifecycle, pointer events, store subscription.
   - Executes effect plans from `src/engine/effects`; it should not decide row growth/shrink rules directly.
   - `sceneRowMotion.ts`: owns runtime row-growth/shrink animation state and removed-slot collapse effects.
@@ -76,9 +88,12 @@ flowchart LR
   Scene --> Interaction["Interaction helpers"]
   Scene --> Animation["Animation helpers"]
   Scene --> Effects["Effect planners"]
+  React --> Time["time controllers"]
+  React --> Performance["performance controllers"]
   Render --> Layout["Layout/projection"]
   Interaction --> Layout
   Effects --> Model
+  Time --> Model
   Layout --> Model["Model/constants"]
   Store --> Model
   Animation --> Render
@@ -88,7 +103,11 @@ flowchart LR
 
 The board reserves a top screen band through `src/engine/layout/viewportConfig.ts`. This reserve is part of zoom-limit and camera-fit math, so maximum zoom keeps the playable columns below the future header area instead of visually offsetting the desk after layout.
 
-The game clock is deliberately separate from the Pixi board scene. `GameTicker.tsx` updates `state.clock` every `GAME_TICK_MS`, while `createDeskScene.ts` only syncs when board-relevant store slices change. Do not route clock-only updates through Pixi scene synchronization unless a future board visual explicitly depends on time.
+The game clock is deliberately separate from the Pixi board scene. `GameTicker.tsx` mounts `createGameTicker`, which updates `state.clock` every `GAME_TICK_MS`, while `createDeskScene.ts` only syncs when board-relevant store slices change. Do not route clock-only updates through Pixi scene synchronization unless a future board visual explicitly depends on time.
+
+The animated page background is also separate from React component state. `AbstractBackground.tsx` only mounts `createAnimatedBackground`; the controller owns canvas sizing, reduced-motion behavior, pointer parallax, and its single scheduled draw loop. Do not add canvas timers or direct drawing back into React components.
+
+Performance notes live in `docs/optimization-notes.md`. Read that file before render, animation, timing, background, or game-loop work, and update it whenever a performance-motivated change is made.
 
 The card inspector is a Pixi screen-space modal. It is drawn over the board by `inspectorRenderer.ts`, but it must not be included in `getDeskWidth`, `deskPolygon`, `workspacePolygon`, or any board layout calculation. If a future feature needs a real object on the tabletop, model it as board geometry separately from modal UI.
 

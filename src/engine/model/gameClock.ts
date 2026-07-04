@@ -1,4 +1,4 @@
-export const GAME_TICK_MS = 500
+export const GAME_TICK_MS = 1000
 export const GAME_DAY_START_MINUTE = 8 * 60
 export const GAME_DAY_END_MINUTE = 18 * 60
 export const GAME_MINUTES_PER_TICK = 1
